@@ -1,0 +1,27 @@
+{
+    "files.associations": {
+        "array": "cpp",
+        "string_view": "cpp",
+        "initializer_list": "cpp",
+        "ranges": "cpp",
+        "utility": "cpp",
+        "valarray": "cpp",
+        "vector": "cpp",
+        "string": "cpp",
+        "vector.h": "c",
+        "unordered_map": "cpp",
+        "unordered_set": "cpp",
+        "*.tcc": "cpp",
+        "functional": "cpp",
+        "memory": "cpp",
+        "optional": "cpp",
+        "system_error": "cpp",
+        "thread": "cpp",
+        "compare": "cpp",
+        "concepts": "cpp",
+        "typeinfo": "cpp",
+        "deque": "c",
+        "list": "c"
+    },
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+}
