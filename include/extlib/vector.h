@@ -7,7 +7,7 @@
 #include "extlib/assert.h"
 
 // Utility macro for iterating in a foreach style
-#define ext_vec_foreach(elem, vec)                                                                  \
+#define ext_vec_foreach(elem, vec)                                                              \
     for(size_t __cont = 1, __i = 0; __cont && __i < ext_vec_size(vec); __cont = !__cont, __i++) \
         for(elem = ext_vec_iterator(vec, __i); __cont; __cont = !__cont)
 
