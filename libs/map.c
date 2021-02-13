@@ -29,7 +29,7 @@ struct ext_map {
     void* entries;
 };
 
-void* entry_at(void* entries, size_t entry_sz, size_t idx) {
+static void* entry_at(void* entries, size_t entry_sz, size_t idx) {
     return ((char*)entries) + idx * entry_sz;
 }
 
