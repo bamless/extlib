@@ -20,6 +20,8 @@ use and completely compatible with plain c arrays.
 ### Basic usage
 
 ```c
+    #include "extlib/vector.h"
+    
     // Let's declare an ext_vector:
     ext_vector(int) vec = NULL;
 
