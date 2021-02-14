@@ -2,11 +2,11 @@
 
 extlib is a collection of libraries that implement common data structures and algorithms that are
 not provided by the c standard library.  
-More specifically, it's is a collection of various code that I've written throughout the years to 
-make writing code in c faster and easier, by providing tools that are in my eyes essential to any
+More specifically, it's a collection of various code that I've written throughout the years to make
+writing code in c faster and easier, by providing tools that are in my eyes essential to any
 programming language.  
 Every algorithm implemented in the library strives to be as simple as possible, but not any simpler.
-Common optimizations and patterns are used where deemed necessary, whilst mantaining the cleanest
+Common optimizations and patterns are used where deemed necessary while mantaining the cleanest
 and simplest implementation possible, making the library easly comprehensible and modifiable.  
 In the following I'll give a brief introdution of the various components of the library, for more
 examples check out the [examples/example.c](https://github.com/bamless/extlib/blob/master/examples/example.c)
@@ -21,7 +21,7 @@ use and completely compatible with plain c arrays.
 
 ```c
     #include "extlib/vector.h"
-    
+
     // Let's declare an ext_vector:
     ext_vector(int) vec = NULL;
 
