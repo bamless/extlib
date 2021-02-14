@@ -180,7 +180,7 @@ int main(void) {
 **ext_map** is the data structure implemented in the most classical way of the bunch.  
 `ext_map_new` will return an opaque pointer to a map struct that will have space for storing items
 of size `entry_sz` (the first argument you pass to it). All the other functions take in `void*`
-pointers to the entries, and for this reason its functions are not type-safe like the one of 
+pointers to the entries, and for this reason its functions are not type-safe like the ones of 
 **ext_vector**.  
 As for the flavour of hashtable implemented, it is an open-adressing based one. The implementation
 will keep track of two parallel arrays, one for entries and one for buckets. The first one is used
@@ -194,9 +194,11 @@ in memory.
 
 the `assert.h` headers contains macros for better debug assertions and unreachable code.  
 `ASSERT` will print the file, line, function and a custom message if the condition is not satisfied, 
-and then it `abort`s the program.  
+and then `abort`s the program.
+
 `UNREACHABLE` will do the same thing when executed, useful to check that a logically unreachable 
-piece of code is actually never reached during execution.  
+piece of code is actually never reached during execution.
+
 An additional macro called `UNUSED` is provided to hint the compiler that a given varible is not
 actually used in the program. This is useful when a variable is only used in assertions which, when 
 elided on release builds, leave the variable unused prompting the compiler to issue a warning. 
