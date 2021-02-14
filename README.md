@@ -57,8 +57,8 @@ user. This allows keeping track of both the capacity and the size of the vector 
 on using a struct. This is what allows full compatibility with plain c arrays and the possibility of
 indexing the vector with the `[]` operator.  
 Another intresting point in the implementation of **ext_vector** is that it is fully implemented in
-preprocessor macros. The macros are basically used as a poor man's generics and thus allow its type
-safety.  
+preprocessor macros. The macros are basically used as poor man's templates and are what allow its 
+type safety.  
 For example doing something like this will result in a compiler error:
 ```c
     ext_vector(int) vec = NULL;
