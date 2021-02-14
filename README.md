@@ -27,7 +27,7 @@ use and completely compatible with plain c arrays.
     int* vec = NULL;
 
     // The ext_vector(T) macro simply expands to T* and is only useful to visually distinguish an
-    // ext_vector from a normal c array visually.
+    // ext_vector from a normal c array.
     // The initialization to NULL is necessary, as a NULL vector is a valid vector, the empty one.
 
     // Append elements:
