@@ -1,8 +1,7 @@
-#include "extlib/map.h"
+#include "ext_map.h"
 
+#include <assert.h>
 #include <string.h>
-
-#include "extlib/assert.h"
 
 #define MAX_LOAD_FACTOR  0.75
 #define INITIAL_CAPACITY 8
@@ -37,7 +36,7 @@ static void map_grow(ext_map* map) {
     size_t new_cap = map->capacity_mask ? (map->capacity_mask + 1) * 2 : INITIAL_CAPACITY;
     void* new_entries = malloc(map->entry_sz * new_cap);
     ext_map_bucket* new_buckets = calloc(new_cap, sizeof(*new_buckets));
-    ASSERT(new_entries && new_buckets, "Out of memory");
+    assert(new_entries && new_buckets && "Out of memory");
 
     if(map->capacity_mask > 0) {
         map->num_entries = 0;
@@ -91,7 +90,7 @@ static size_t find_index(const ext_map* map, const void* entry, uint32_t hash) {
 
 ext_map* ext_map_new(size_t entry_sz, hash_fn hash, compare_fn compare) {
     ext_map* map = malloc(sizeof(*map));
-    ASSERT(map, "Out of memory");
+    assert(map && "Out of memory");
     *map = (ext_map){hash, compare, entry_sz, 0, 0, 0, NULL, NULL};
     return map;
 }

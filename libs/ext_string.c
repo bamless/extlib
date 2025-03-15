@@ -1,11 +1,10 @@
-#include "extlib/string.h"
+#include "ext_string.h"
 
+#include <assert.h>
 #include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-
-#include "extlib/assert.h"
 
 #define LOGARITHMIC_GROWTH_TRESH (1024 * 1024)
 #define ext_str_header(s)        ((str_header_t*)(s - sizeof(str_header_t)))
@@ -33,7 +32,7 @@ static void ext_str_maybe_grow(ext_string* str, size_t amount) {
         }
 
         header = realloc(header, sizeof(*header) + new_capacity);
-        ASSERT(header, "Out of memory");
+        assert(header && "Out of memory");
         header->capacity = new_capacity;
 
         *str = header->data;
@@ -49,7 +48,7 @@ ext_string ext_str_new_cap(size_t capacity) {
 
 ext_string ext_str_new_len(const void* data, size_t len) {
     str_header_t* header = malloc(sizeof(*header) + len + 1);
-    ASSERT(header, "Out of memory");
+    assert(header && "Out of memory");
     memcpy(header->data, data, len);
     header->data[len] = '\0';
     header->capacity = len + 1;
@@ -82,7 +81,7 @@ ext_string ext_str_vfmt(const char* fmt, va_list ap) {
         written = vsnprintf(str, capacity, fmt, args);
         va_end(args);
 
-        ASSERT(written < capacity, "Buffer still to small");
+        assert(written < capacity && "Buffer still too small");
     }
 
     ext_str_set_size(&str, written);
@@ -126,8 +125,8 @@ ext_string ext_str_join_str(const char* sep, ext_string* strings, int count) {
 }
 
 ext_string ext_str_substr(const ext_string str, size_t start, size_t end) {
-    ASSERT(start <= end, "start must be less than or equal to end");
-    ASSERT(end <= ext_str_size(str), "Buffer overflow");
+    assert(start <= end && "start must be less than or equal to end");
+    assert(end <= ext_str_size(str) && "Buffer overflow");
     return ext_str_new_len(str + start, end - start);
 }
 
@@ -166,8 +165,8 @@ void ext_str_append_vfmt(ext_string* str, const char* fmt, va_list ap) {
         size_t written = vsnprintf(*str + size, available, fmt, args);
         va_end(args);
 
-        ASSERT(written < available, "Buffer still too small");
-        UNUSED(written);
+        assert(written < available && "Buffer still too small");
+        (void)written;
     }
 
     ext_str_set_size(str, size + written);
@@ -181,12 +180,12 @@ void ext_str_append_fmt(ext_string* str, const char* fmt, ...) {
 }
 
 size_t ext_str_find_len(ext_string str, size_t start_pos, const void* needle, size_t len) {
-    size_t str_size = ext_str_size(str);
-    if(str_size < len) {
+    size_t size = ext_str_size(str);
+    if(size < len) {
         return ext_str_npos;
     }
 
-    for(size_t i = start_pos; i <= str_size - len; i++) {
+    for(size_t i = start_pos; i <= size - len; i++) {
         if(memcmp(str + i, needle, len) == 0) {
             return i;
         }
@@ -204,12 +203,12 @@ size_t ext_str_find(const ext_string str, size_t start_pos, const char* needle) 
 }
 
 size_t ext_str_rfind_len(const ext_string str, size_t start_pos, const void* needle, size_t len) {
-    size_t str_size = ext_str_size(str);
-    if(str_size < len) {
+    size_t size = ext_str_size(str);
+    if(size < len) {
         return ext_str_npos;
     }
 
-    if(start_pos >= str_size) {
+    if(start_pos >= size) {
         return ext_str_npos;
     }
 
@@ -217,7 +216,7 @@ size_t ext_str_rfind_len(const ext_string str, size_t start_pos, const void* nee
         start_pos = len - 1;
     }
 
-    for(size_t i = str_size - start_pos - 1; i != ext_str_npos; i--) {
+    for(size_t i = size - start_pos - 1; i != ext_str_npos; i--) {
         if(memcmp(str + i, needle, len) == 0) {
             return i;
         }
@@ -262,6 +261,7 @@ void ext_str_to_upper(ext_string str) {
     }
 }
 
+#ifdef EXT_VECTOR_H
 ext_vector(ext_string) ext_str_split(const ext_string str, char sep) {
     ext_vector(ext_string) tokens = NULL;
 
@@ -285,6 +285,7 @@ void ext_str_split_free(ext_vector(ext_string) split) {
     }
     ext_vec_free(split);
 }
+#endif
 
 void ext_str_shrink_to_fit(ext_string* str) {
     size_t capacity = ext_str_capacity(*str);
@@ -293,7 +294,7 @@ void ext_str_shrink_to_fit(ext_string* str) {
     if(size + 1 < capacity) {
         str_header_t* header = ext_str_header(*str);
         header = realloc(header, sizeof(*header) + size + 1);
-        ASSERT(header, "Out of memory");
+        assert(header && "Out of memory");
         header->capacity = size + 1;
 
         *str = header->data;
@@ -305,9 +306,8 @@ void ext_str_reserve(ext_string* str, size_t amount) {
     if(amount + 1 > capacity) {
         str_header_t* header = ext_str_header(*str);
         header = realloc(header, sizeof(*header) + amount + 1);
-        ASSERT(header, "Out of memory");
+        assert(header && "Out of memory");
         header->capacity = amount + 1;
-
         *str = header->data;
     }
 }
