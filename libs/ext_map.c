@@ -3,11 +3,14 @@
 #include <assert.h>
 #include <string.h>
 
-#define MAX_LOAD_FACTOR  0.75
-#define INITIAL_CAPACITY 8
+// Read as: size * 0.75, i.e. a load factor of 75%
+// This is basically doing:
+//   size / 2 + size / 4 = (3 * size) / 4
+#define MAX_ENTRY_LOAD(size) (((size) >> 1) + ((size) >> 2))
 
-#define EMPTY_MARK 0
-#define TOMB_MARK  1
+#define INITIAL_CAPACITY 8
+#define EMPTY_MARK       0
+#define TOMB_MARK        1
 
 #define IS_TOMB(bucket)  ((bucket)->hash == TOMB_MARK)
 #define IS_EMPTY(bucket) ((bucket)->hash == EMPTY_MARK)
@@ -28,7 +31,7 @@ static void map_grow(ext_map* map) {
         for(size_t i = 0; i <= map->capacity_mask; i++) {
             ext_map_bucket* buck = &map->buckets[i];
             if(IS_VALID(buck)) {
-                size_t new_idx = buck->hash & (new_cap - 1); // Read as: buck->hash % new_cap
+                size_t new_idx = buck->hash & (new_cap - 1);  // Read as: buck->hash % new_cap
                 new_buckets[new_idx] = *buck;
                 memcpy(entry_at(new_entries, map->entry_sz, new_idx),
                        entry_at(map->entries, map->entry_sz, i), map->entry_sz);
@@ -83,7 +86,6 @@ void ext_map_free(ext_map* map) {
 #ifndef NDEBUG
     *map = (ext_map){0};
 #endif
-    free(map);
 }
 
 const void* ext_map_get(const ext_map* map, const void* entry) {
@@ -99,7 +101,7 @@ const void* ext_map_get(const ext_map* map, const void* entry) {
 }
 
 bool ext_map_put(ext_map* map, const void* entry) {
-    if(map->num_entries + 1 > (map->capacity_mask + 1) * MAX_LOAD_FACTOR) {
+    if(map->num_entries + 1 > MAX_ENTRY_LOAD(map->capacity_mask + 1)) {
         map_grow(map);
     }
 

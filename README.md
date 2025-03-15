@@ -25,7 +25,7 @@ use and completely compatible with plain c arrays.
 ### Basic usage
 
 ```c
-    #include "extlib/vector.h"
+    #include "ext_vector.h"
 
     // Let's declare an vector:
     vector(int) vec = NULL;
@@ -84,7 +84,7 @@ c-like char* strings.
 ### Basic usage
 
 ```c
-#include "extlib/string.h"
+#include "ext_string.h"
 
 // Let's create a new string:
 string str = str_new("New string!");
@@ -129,7 +129,7 @@ to handle data of different types.
 ### Basic usage
 
 ```c
-#include "extlib/map.h"
+#include "ext_map.h"
 
 typedef struct Entry {
     const char* name;
@@ -187,27 +187,34 @@ int main(void) {
 
 ### Implementation details
 
-**ext_map** is the data structure implemented in the most classical way of the bunch.
-`ext_map_new` will return an opaque pointer to a map struct that will have space for storing items
-of size `entry_sz` (the first argument you pass to it). All the other functions take in `void*`
-pointers to the entries, and for this reason its functions are not type-safe like the ones of
-**ext_vector**.
-As for the flavour of hashtable implemented, it is an open-adressing based one. The implementation
-will keep track of two parallel arrays, one for entries and one for buckets. The first one is used
-to store the data provided on put, and the second to cache its hash and to keep track of tombstones.
-The map will grow when its fill ratio (including tombstones) reaches a certain percentage  (75% is
-the default).
-This makes the map really efficient to iterate over, as all the data is kept in a contiguous array
-in memory.
+**ext_map** is the data structure implemented in the most classical way of the bunch. 
+`ext_map_init` will initialize a map struct that will store entries of size `entry_sz`. All other
+functions will take in `void*` pointers to the entries, and for this reason its functions are not
+type-safe like the ones of **ext_vector**.
 
-## extlib/assert.h
+`ext_map_init` also takes in two function pointers, `hash` and `compare`, that will be used to
+compute the hash of the keys and to compare them respectively. See the example above for a simple
+example of how to implement these functions.
 
-the `assert.h` headers contains macros for better debug assertions and unreachable code.
+As for the flavour of hashtable implemented, it is an open-adressing hash map with linear probing.
+The implementation will keep track of two parallel arrays, one for entries and one for buckets. The
+first one is used to store the data provided on put, and the second to cache its hash and to keep
+track of tombstones. The map will grow when its fill ratio (including tombstones) reaches a certain
+percentage  (75%). This makes the map really efficient to iterate over, as all the data is kept in a
+contiguous array in memory (even though there might be holes caused by tombstones and hashing).
+
+## ext_assert.h
+
+the `ext_assert.h` headers contains macros for better debug assertions and unreachable code.
 `ASSERT` will print the file, line, function and a custom message if the condition is not satisfied,
 and then `abort`s the program.
 
 `UNREACHABLE` will do the same thing when executed, useful to check that a logically unreachable
 piece of code is actually never reached during execution.
+
+When compiling in release mode (i.e. with `-DNDEBUG`), the `ASSERT` macro will be elided, and the
+`UNREACHABLE` macro will be replaced with a `__builtin_unreachable()` call, which will hint the
+compiler that the code is unreachable.
 
 An additional macro called `UNUSED` is provided to hint the compiler that a given varible is not
 actually used in the program. This is useful when a variable is only used in assertions which, when
