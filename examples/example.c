@@ -168,7 +168,7 @@ static void map_example(void) {
 
     // Retrieve an item from the map
     // Note that we initialize only the `name` field as it is our chosen key in the struct
-    // On `get` the other fields are not accessed and thus it's fine for them to be uninitialized
+    // On `get` the other fields are not accessed and thus it's fine for them to be default-initialized
     const Entry* e2 = map_get(&map, &(Entry){.name = "Entry 2"});
     if(e2) { // If the key isn't found `get` will return NULL
         printf("'%s' %d\n", e2->name, e2->value);

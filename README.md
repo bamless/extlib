@@ -173,7 +173,7 @@ int main(void) {
     // Note how in the call to ext_map_get the provided Entry has only its name field initialized.
     // This is because our chosen key in Entry is the `name` field (as expressed in the hash and
     // compare function), and the other fields will not be accessed during the ext_map_get call.
-    // Thus, it's safe for them to be uninitialized
+    // Thus, it's safe for them to be default-initialized.
 
     // Iterate through the map using iterators:
     for(const Entry* it = ext_map_begin(map); it != ext_map_get(map); it = ext_map_incr(map, it)) {
