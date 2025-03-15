@@ -1,40 +1,34 @@
 # Add static libraries, one per file. Use interface libraries for header only
 
-add_library(extassert INTERFACE ${PROJECT_SOURCE_DIR}/include/extlib/ext_assert.h)
+add_library(extassert INTERFACE ${PROJECT_SOURCE_DIR}/include/ext_assert.h)
 target_include_directories(extassert
     INTERFACE
         $<INSTALL_INTERFACE:include/extlib>
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include/extlib>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
 )
 
-add_library(extvector INTERFACE  ${PROJECT_SOURCE_DIR}/include/extlib/ext_vector.h)
+add_library(extvector INTERFACE  ${PROJECT_SOURCE_DIR}/include/ext_vector.h)
 target_link_libraries(extvector INTERFACE extassert)
 target_include_directories(extvector
     INTERFACE
         $<INSTALL_INTERFACE:include/extlib>
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include/extlib>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
 )
 
-add_library(extstring STATIC ext_string.c ${PROJECT_SOURCE_DIR}/include/extlib/ext_string.h)
+add_library(extstring STATIC ext_string.c ${PROJECT_SOURCE_DIR}/include/ext_string.h)
 target_link_libraries(extstring INTERFACE extvector PRIVATE extassert)
 target_include_directories(extstring
     PUBLIC
         $<INSTALL_INTERFACE:include/extlib>
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include/extlib>
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${PROJECT_SOURCE_DIR}/include/extlib
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
 )
 
-add_library(extmap STATIC ext_map.c ${PROJECT_SOURCE_DIR}/include/extlib/ext_map.h)
+add_library(extmap STATIC ext_map.c ${PROJECT_SOURCE_DIR}/include/ext_map.h)
 target_link_libraries(extmap PRIVATE extassert)
 target_include_directories(extmap
     PUBLIC
         $<INSTALL_INTERFACE:include/extlib>
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include/extlib>
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${PROJECT_SOURCE_DIR}/include/extlib
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
 )
 
 # Enable link-time optimization if supported
