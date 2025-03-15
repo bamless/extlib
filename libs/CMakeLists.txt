@@ -8,7 +8,7 @@ target_include_directories(extassert
 )
 
 add_library(extvector INTERFACE  ${PROJECT_SOURCE_DIR}/include/ext_vector.h)
-target_link_libraries(extvector INTERFACE extassert)
+target_link_libraries(extvector)
 target_include_directories(extvector
     INTERFACE
         $<INSTALL_INTERFACE:include/extlib>
@@ -16,7 +16,7 @@ target_include_directories(extvector
 )
 
 add_library(extstring STATIC ext_string.c ${PROJECT_SOURCE_DIR}/include/ext_string.h)
-target_link_libraries(extstring INTERFACE extvector PRIVATE extassert)
+target_link_libraries(extstring INTERFACE extvector)
 target_include_directories(extstring
     PUBLIC
         $<INSTALL_INTERFACE:include/extlib>
@@ -24,7 +24,7 @@ target_include_directories(extstring
 )
 
 add_library(extmap STATIC ext_map.c ${PROJECT_SOURCE_DIR}/include/ext_map.h)
-target_link_libraries(extmap PRIVATE extassert)
+target_link_libraries(extmap)
 target_include_directories(extmap
     PUBLIC
         $<INSTALL_INTERFACE:include/extlib>

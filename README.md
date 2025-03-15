@@ -17,6 +17,15 @@ file.
 > when using in your project, you can define `EXT_LIB_NO_SHORTHANDS` before including any of the
 > library headers to disable names without prefixes.
 
+# How to use in your project
+
+The simplest way to use the library in your project is to just copy the files you need. Copy the
+headers in `include` (or pick the ones you need) and the corresponding source files in `src` (if
+they exists, some libs are header only, such as `ext_vector` and `ext_assert`) and enjoy.
+
+CMake is also supported, and you can use the `extvector`, `extstring`, `extmap` and `extassert`
+targets to link against the corresponding libraries.
+
 ## ext_vector
 
 **ext_vector** is an implementation of a dynamic, growable and type-safe array, that is simple to
