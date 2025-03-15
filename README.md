@@ -13,7 +13,7 @@ In the following I'll give a brief introdution of the various components of the 
 examples check out the [examples/example.c](https://github.com/bamless/extlib/blob/master/examples/example.c)
 file.
 
-> NOTE: The library by default exports all symbols without any prefix. If you want find any conflicts
+> NOTE: The library by default exports all symbols without any prefix. If you find any conflicts
 > when using in your project, you can define `EXT_LIB_NO_SHORTHANDS` before including any of the
 > library headers to disable names without prefixes.
 
@@ -25,6 +25,8 @@ they exists, some libs are header only, such as `ext_vector` and `ext_assert`) a
 
 CMake is also supported, and you can use the `extvector`, `extstring`, `extmap` and `extassert`
 targets to link against the corresponding libraries.
+
+# Libraries
 
 ## ext_vector
 
