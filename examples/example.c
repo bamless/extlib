@@ -151,36 +151,37 @@ static void map_example(void) {
     printf("\n---- map examples ----\n");
 
     // Create a new map that will contain items of the `Entry` struct
-    map* map = map_new(sizeof(Entry), hash, compare);
+    map map;
+    map_init(&map, sizeof(Entry), hash, compare);
 
     // Set items in the map
     // The items are copied in the map on `put`
-    map_put(map, &(Entry){.name = "Entry 1", .value = 10});
-    map_put(map, &(Entry){.name = "Entry 2", .value = 20});
-    map_put(map, &(Entry){.name = "Entry 3", .value = 30});
-    map_put(map, &(Entry){.name = "Entry 4", .value = 40});
-    map_put(map, &(Entry){.name = "Entry 5", .value = 50});
-    map_put(map, &(Entry){.name = "Entry 6", .value = 60});
-    map_put(map, &(Entry){.name = "Entry 7", .value = 70});
-    map_put(map, &(Entry){.name = "Entry 8", .value = 80});
+    map_put(&map, &(Entry){.name = "Entry 1", .value = 10});
+    map_put(&map, &(Entry){.name = "Entry 2", .value = 20});
+    map_put(&map, &(Entry){.name = "Entry 3", .value = 30});
+    map_put(&map, &(Entry){.name = "Entry 4", .value = 40});
+    map_put(&map, &(Entry){.name = "Entry 5", .value = 50});
+    map_put(&map, &(Entry){.name = "Entry 6", .value = 60});
+    map_put(&map, &(Entry){.name = "Entry 7", .value = 70});
+    map_put(&map, &(Entry){.name = "Entry 8", .value = 80});
 
 
     // Retrieve an item from the map
     // Note that we initialize only the `name` field as it is our chosen key in the struct
     // On `get` the other fields are not accessed and thus it's fine for them to be uninitialized
-    const Entry* e2 = map_get(map, &(Entry){.name = "Entry 2"});
+    const Entry* e2 = map_get(&map, &(Entry){.name = "Entry 2"});
     if(e2) { // If the key isn't found `get` will return NULL
         printf("'%s' %d\n", e2->name, e2->value);
     }
 
-    printf("map size: %zu\n", map_size(map));
+    printf("map size: %zu\n", map_size(&map));
 
     // Iterate over all entries using iteator functions
-    for(const Entry* it = map_begin(map); it != map_end(map); it = map_incr(map, it)) {
+    for(const Entry* it = map_begin(&map); it != map_end(&map); it = map_incr(&map, it)) {
         printf("'%s' %d\n", it->name, it->value);
     }
 
-    map_free(map);
+    map_free(&map);
 }
 
 int main(void) {

@@ -13,21 +13,6 @@
 #define IS_EMPTY(bucket) ((bucket)->hash == EMPTY_MARK)
 #define IS_VALID(bucket) (!IS_EMPTY(bucket) && !IS_TOMB(bucket))
 
-typedef struct ext_map_bucket {
-    uint32_t hash;
-} ext_map_bucket;
-
-struct ext_map {
-    hash_fn hash;
-    compare_fn compare;
-    size_t entry_sz;
-    size_t capacity_mask;
-    size_t num_entries;
-    size_t size;
-    ext_map_bucket* buckets;
-    void* entries;
-};
-
 static void* entry_at(void* entries, size_t entry_sz, size_t idx) {
     return ((char*)entries) + idx * entry_sz;
 }
@@ -88,16 +73,16 @@ static size_t find_index(const ext_map* map, const void* entry, uint32_t hash) {
     }
 }
 
-ext_map* ext_map_new(size_t entry_sz, hash_fn hash, compare_fn compare) {
-    ext_map* map = malloc(sizeof(*map));
-    assert(map && "Out of memory");
+void ext_map_init(ext_map* map, size_t entry_sz, hash_fn hash, compare_fn compare) {
     *map = (ext_map){hash, compare, entry_sz, 0, 0, 0, NULL, NULL};
-    return map;
 }
 
 void ext_map_free(ext_map* map) {
     free(map->entries);
     free(map->buckets);
+#ifndef NDEBUG
+    *map = (ext_map){0};
+#endif
     free(map);
 }
 

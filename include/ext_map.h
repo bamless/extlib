@@ -8,9 +8,22 @@
 typedef uint32_t (*hash_fn)(const void* entry);
 typedef bool (*compare_fn)(const void* entry1, const void* entry2);
 
-typedef struct ext_map ext_map;
+typedef struct ext_map_bucket {
+    uint32_t hash;
+} ext_map_bucket;
 
-ext_map* ext_map_new(size_t entry_sz, hash_fn hash, compare_fn compare);
+typedef struct ext_map {
+    hash_fn hash;
+    compare_fn compare;
+    size_t entry_sz;
+    size_t capacity_mask;
+    size_t num_entries;
+    size_t size;
+    ext_map_bucket* buckets;
+    void* entries;
+} ext_map;
+
+void ext_map_init(ext_map* map, size_t entry_sz, hash_fn hash, compare_fn compare);
 void ext_map_free(ext_map* map);
 
 const void* ext_map_get(const ext_map* map, const void* entry);
@@ -32,8 +45,8 @@ uint32_t ext_map_hash_bytes(const void* bytes, size_t size);
 
 typedef ext_map map;
 
-static inline ext_map* map_new(size_t entry_sz, hash_fn hash, compare_fn compare) {
-    return ext_map_new(entry_sz, hash, compare);
+static inline void map_init(ext_map* map, size_t entry_sz, hash_fn hash, compare_fn compare) {
+    ext_map_init(map, entry_sz, hash, compare);
 }
 
 static inline void map_free(ext_map* map) {
