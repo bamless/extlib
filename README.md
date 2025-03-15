@@ -164,35 +164,40 @@ static void compare(const void* entry1, const void* entry2) {
 // others contain the associated data
 
 int main(void) {
-    // Let's create a new map
-    ext_map* map = ext_map_new(sizeof(Entry), hash, compare);
+    printf("\n---- map examples ----\n");
 
-    // Let's add some entries to it:
-    ext_map_put(map, &(Entry){.name = "Entry 1", .data = 10});
-    ext_map_put(map, &(Entry){.name = "Entry 2", .data = 20});
-    ext_map_put(map, &(Entry){.name = "Entry 3", .data = 30});
-    ext_map_put(map, &(Entry){.name = "Entry 4", .data = 40});
+    // Create a new map that will contain items of the `Entry` struct
+    map map;
+    map_init(&map, sizeof(Entry), hash, compare);
 
-    // ext_map_put will copy the data at the address pointed to in the second argument
+    // Set items in the map
+    // The items are copied in the map on `put`
+    map_put(&map, &(Entry){.name = "Entry 1", .value = 10});
+    map_put(&map, &(Entry){.name = "Entry 2", .value = 20});
+    map_put(&map, &(Entry){.name = "Entry 3", .value = 30});
+    map_put(&map, &(Entry){.name = "Entry 4", .value = 40});
+    map_put(&map, &(Entry){.name = "Entry 5", .value = 50});
+    map_put(&map, &(Entry){.name = "Entry 6", .value = 60});
+    map_put(&map, &(Entry){.name = "Entry 7", .value = 70});
+    map_put(&map, &(Entry){.name = "Entry 8", .value = 80});
 
-    // Let's retrieve an entry back:
-    const Entry* e = ext_map_get(map, &(Entry){.name = "Entry 2"});
-    if(e) { // Did we find it?
-        printf("%s: %d", e->name, e->data);
+
+    // Retrieve an item from the map
+    // Note that we initialize only the `name` field as it is our chosen key in the struct
+    // On `get` the other fields are not accessed and thus it's fine for them to be default-initialized
+    const Entry* e2 = map_get(&map, &(Entry){.name = "Entry 2"});
+    if(e2) { // If the key isn't found `get` will return NULL
+        printf("'%s' %d\n", e2->name, e2->value);
     }
 
-    // Note how in the call to ext_map_get the provided Entry has only its name field initialized.
-    // This is because our chosen key in Entry is the `name` field (as expressed in the hash and
-    // compare function), and the other fields will not be accessed during the ext_map_get call.
-    // Thus, it's safe for them to be default-initialized.
+    printf("map size: %zu\n", map_size(&map));
 
-    // Iterate through the map using iterators:
-    for(const Entry* it = ext_map_begin(map); it != ext_map_get(map); it = ext_map_incr(map, it)) {
-        printf("%s: %d", it->name, it->data);
+    // Iterate over all entries using iteator functions
+    for(const Entry* it = map_begin(&map); it != map_end(&map); it = map_incr(&map, it)) {
+        printf("'%s' %d\n", it->name, it->value);
     }
 
-    // Finally free the map
-    ext_map_free(map);
+    map_free(&map);
 }
 ```
 
