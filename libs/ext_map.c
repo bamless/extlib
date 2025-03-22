@@ -32,6 +32,9 @@ static void map_grow(ext_map* map) {
             ext_map_bucket* buck = &map->buckets[i];
             if(IS_VALID(buck)) {
                 size_t new_idx = buck->hash & (new_cap - 1);  // Read as: buck->hash % new_cap
+                while(IS_VALID(&new_buckets[new_idx])) {
+                    new_idx = (new_idx + 1) & (new_cap - 1);  // Read as: (new_idx + 1) % new_cap
+                }
                 new_buckets[new_idx] = *buck;
                 memcpy(entry_at(new_entries, map->entry_sz, new_idx),
                        entry_at(map->entries, map->entry_sz, i), map->entry_sz);
@@ -54,7 +57,7 @@ static uint32_t hash_entry(const ext_map* map, const void* entry) {
 }
 
 static size_t find_index(const ext_map* map, const void* entry, uint32_t hash) {
-    size_t idx = hash & map->capacity_mask;
+    size_t idx = hash & map->capacity_mask; // Read as: hash % (map->capacity_mask + 1)
 
     bool tomb_found = false;
     size_t tomb_idx = 0;
@@ -161,7 +164,7 @@ bool ext_map_empty(const ext_map* map) {
     return map->size == 0;
 }
 
-const void* ext_map_begin(const ext_map* map) {
+void* ext_map_begin(const ext_map* map) {
     if(!map->entries) return NULL;
 
     for(size_t i = 0; i <= map->capacity_mask; i++) {
@@ -173,7 +176,7 @@ const void* ext_map_begin(const ext_map* map) {
     return ext_map_end(map);
 }
 
-const void* ext_map_end(const ext_map* map) {
+void* ext_map_end(const ext_map* map) {
     return map->entries ? map->entries + ext_map_capacity(map) * map->entry_sz : NULL;
 }
 
@@ -181,7 +184,7 @@ static size_t iterator_index(const ext_map* map, const void* it) {
     return (it - map->entries) / map->entry_sz;
 }
 
-const void* ext_map_incr(const ext_map* map, const void* it) {
+void* ext_map_incr(const ext_map* map, const void* it) {
     for(size_t i = iterator_index(map, it) + 1; i <= map->capacity_mask; i++) {
         if(IS_VALID(&map->buckets[i])) {
             return map->entries + i * map->entry_sz;
