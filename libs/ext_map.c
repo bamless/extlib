@@ -88,7 +88,9 @@ void ext_map_free(ext_map* map) {
 #endif
 }
 
-const void* ext_map_get(const ext_map* map, const void* entry) {
+void* ext_map_get(const ext_map* map, const void* entry) {
+    if(!map->entries) return NULL;
+
     uint32_t hash = hash_entry(map, entry);
     size_t idx = find_index(map, entry, hash);
 
@@ -122,6 +124,8 @@ bool ext_map_put(ext_map* map, const void* entry) {
 }
 
 bool ext_map_erase(ext_map* map, const void* entry) {
+    if(!map->entries) return false;
+
     uint32_t hash = hash_entry(map, entry);
     size_t idx = find_index(map, entry, hash);
 

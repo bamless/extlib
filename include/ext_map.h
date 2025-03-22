@@ -26,7 +26,7 @@ typedef struct ext_map {
 void ext_map_init(ext_map* map, size_t entry_sz, hash_fn hash, compare_fn compare);
 void ext_map_free(ext_map* map);
 
-const void* ext_map_get(const ext_map* map, const void* entry);
+void* ext_map_get(const ext_map* map, const void* entry);
 bool ext_map_put(ext_map* map, const void* entry);
 bool ext_map_erase(ext_map* map, const void* entry);
 void ext_map_clear(ext_map* map);
