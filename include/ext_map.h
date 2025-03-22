@@ -53,7 +53,7 @@ static inline void map_free(ext_map* map) {
     ext_map_free(map);
 }
 
-static inline const void* map_get(const ext_map* map, const void* entry) {
+static inline void* map_get(const ext_map* map, const void* entry) {
     return ext_map_get(map, entry);
 }
 
