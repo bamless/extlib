@@ -177,7 +177,7 @@ static void map_example(void) {
     printf("map size: %zu\n", map_size(&map));
 
     // Iterate over all entries using iteator functions
-    for(const Entry* it = map_begin(&map); it != map_end(&map); it = map_incr(&map, it)) {
+    for(const Entry* it = map_begin(&map); it != map_end(&map); it = map_next(&map, it)) {
         printf("'%s' %d\n", it->name, it->value);
     }
 

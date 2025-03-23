@@ -126,7 +126,7 @@ bool ext_map_put(ext_map* map, const void* entry) {
     return is_new;
 }
 
-bool ext_map_erase(ext_map* map, const void* entry) {
+bool ext_map_del(ext_map* map, const void* entry) {
     if(!map->entries) return false;
 
     uint32_t hash = hash_entry(map, entry);
@@ -184,7 +184,7 @@ static size_t iterator_index(const ext_map* map, const void* it) {
     return (it - map->entries) / map->entry_sz;
 }
 
-void* ext_map_incr(const ext_map* map, const void* it) {
+void* ext_map_next(const ext_map* map, const void* it) {
     for(size_t i = iterator_index(map, it) + 1; i <= map->capacity_mask; i++) {
         if(IS_VALID(&map->buckets[i])) {
             return map->entries + i * map->entry_sz;

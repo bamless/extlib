@@ -28,16 +28,16 @@ void ext_map_free(ext_map* map);
 
 void* ext_map_get(const ext_map* map, const void* entry);
 bool ext_map_put(ext_map* map, const void* entry);
-bool ext_map_erase(ext_map* map, const void* entry);
+bool ext_map_del(ext_map* map, const void* entry);
 void ext_map_clear(ext_map* map);
 
 size_t ext_map_size(const ext_map* map);
 size_t ext_map_capacity(const ext_map* map);
 bool ext_map_empty(const ext_map* map);
 
-const void* ext_map_begin(const ext_map* map);
-const void* ext_map_end(const ext_map* map);
-const void* ext_map_incr(const ext_map* map, const void* it);
+void* ext_map_begin(const ext_map* map);
+void* ext_map_end(const ext_map* map);
+void* ext_map_next(const ext_map* map, const void* it);
 
 uint32_t ext_map_hash_bytes(const void* bytes, size_t size);
 
@@ -61,8 +61,8 @@ static inline bool map_put(ext_map* map, const void* entry) {
     return ext_map_put(map, entry);
 }
 
-static inline bool map_erase(ext_map* map, const void* entry) {
-    return ext_map_erase(map, entry);
+static inline bool map_del(ext_map* map, const void* entry) {
+    return ext_map_del(map, entry);
 }
 
 static inline void map_clear(ext_map* map) {
@@ -81,16 +81,16 @@ static inline bool map_empty(const ext_map* map) {
     return ext_map_empty(map);
 }
 
-static inline const void* map_begin(const ext_map* map) {
+static inline void* map_begin(const ext_map* map) {
     return ext_map_begin(map);
 }
 
-static inline const void* map_end(const ext_map* map) {
+static inline void* map_end(const ext_map* map) {
     return ext_map_end(map);
 }
 
-static inline const void* map_incr(const ext_map* map, const void* it) {
-    return ext_map_incr(map, it);
+static inline void* map_next(const ext_map* map, const void* it) {
+    return ext_map_next(map, it);
 }
 
 static inline uint32_t map_hash_bytes(const void* bytes, size_t size) {
