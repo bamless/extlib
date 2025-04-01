@@ -4,9 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "ext_map.h"
-#include "ext_string.h"
-#include "ext_vector.h"
+#define EXTLIB_IMPLEMENTATION
+#include "extlib.h"
 
 typedef struct Entity {
     const char* name;
@@ -21,7 +20,8 @@ static void vector_example(void) {
     // the `vector(T)` macro simply subsitutes the given type with a pointer version of it,
     // so we could have used int* as well, but it's useful to distinguish between vectors
     // and other kind of buffers visually
-    vector(int) vec = NULL; // must be initialized to NULL! Remember, a NULL vector is a valid vector, the empty one
+    vector(int) vec = NULL;  // must be initialized to NULL! Remember, a NULL vector is a valid
+                             // vector, the empty one
     vec_push_back_all(vec, integers, sizeof(integers) / sizeof(int));
 
     // Can directly index int the vector!
@@ -44,12 +44,12 @@ static void vector_example(void) {
     // Vector of structs (Entity)
     vector(Entity) entities = NULL;
 
-    // The extra paranthesis around the Entity compound literal are needed for the macro to 
+    // The extra paranthesis around the Entity compound literal are needed for the macro to
     // correctly parse the literal as a single element
     // The Entity struct will be copyed in the vector on `push_back`
-    vec_push_back(entities, ((Entity){.name = "Entity 1", .x = 10,  .y = 20}));
-    vec_push_back(entities, ((Entity){.name = "Entity 2", .x = 0,   .y = 100}));
-    vec_push_back(entities, ((Entity){.name = "Entity 3", .x = 73,  .y = 11}));
+    vec_push_back(entities, ((Entity){.name = "Entity 1", .x = 10, .y = 20}));
+    vec_push_back(entities, ((Entity){.name = "Entity 2", .x = 0, .y = 100}));
+    vec_push_back(entities, ((Entity){.name = "Entity 3", .x = 73, .y = 11}));
     vec_push_back(entities, ((Entity){.name = "Entity 4", .x = 103, .y = 20}));
 
     vec_pop_back(entities);
@@ -90,7 +90,7 @@ static void string_example(void) {
     printf("Logarithmic growth on append for constant constant amortized time\n");
     printf("before append: size %zu\tcapacity %zu\n", str_size(str), str_capacity(str));
 
-    // Note that functions that modify the string take a pointer to it, as they need to reassign 
+    // Note that functions that modify the string take a pointer to it, as they need to reassign
     // the string in case of allocations that change the underlying pointer to the data
     str_append_fmt(&str, " number %d", 20);
     printf("%s\n", str);
@@ -113,8 +113,8 @@ static void string_example(void) {
 
     // string can hold arbitrary binary data
     string binary = str_new_len("foo\0test", 8);
-    
-    // But if they contain embedded NUL terminators you cannot use them in c standard library 
+
+    // But if they contain embedded NUL terminators you cannot use them in c standard library
     // functions that don't take in an explicit length
     printf("incorrect length from standard library: %zu\n", strlen(binary));
     printf("correct length from str functions: %zu\n", str_size(binary));
@@ -128,7 +128,7 @@ typedef struct Entry {
 } Entry;
 
 // We hash and return only the `name` field of the Entry struct, as it is the one we want to use
-// as key, while the other one contains the associated data. 
+// as key, while the other one contains the associated data.
 // Note that you can use multiple fields as keys by combining their hash and multiple fields as
 // data by ignoring them
 static uint32_t hash(const void* entry) {
@@ -165,12 +165,12 @@ static void map_example(void) {
     map_put(&map, &(Entry){.name = "Entry 7", .value = 70});
     map_put(&map, &(Entry){.name = "Entry 8", .value = 80});
 
-
     // Retrieve an item from the map
     // Note that we initialize only the `name` field as it is our chosen key in the struct
-    // On `get` the other fields are not accessed and thus it's fine for them to be default-initialized
+    // On `get` the other fields are not accessed and thus it's fine for them to be
+    // default-initialized
     const Entry* e2 = map_get(&map, &(Entry){.name = "Entry 2"});
-    if(e2) { // If the key isn't found `get` will return NULL
+    if(e2) {  // If the key isn't found `get` will return NULL
         printf("'%s' %d\n", e2->name, e2->value);
     }
 

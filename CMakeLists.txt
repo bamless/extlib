@@ -2,41 +2,14 @@ cmake_minimum_required(VERSION 3.9)
 project(extlib)
 
 set(EXTLIB_VERSION_MAJOR 1)
-set(EXTLIB_VERSION_MINOR 0)
+set(EXTLIB_VERSION_MINOR 1)
 set(EXTLIB_VERSION_PATCH 0)
 set(EXTLIB_VERSION ${EXTLIB_VERSION_MAJOR}.${EXTLIB_VERSION_MINOR}.${EXTLIB_VERSION_PATCH})
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Set default build type if not specified
-get_property(IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
-if (NOT IS_MULTI_CONFIG AND NOT CMAKE_BUILD_TYPE)
-    message(STATUS "Setting build type to 'Release' as none was specified.")
-    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
-endif()
-
-# Check for link time optimization support
-if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    include(CheckIPOSupported)
-    check_ipo_supported(RESULT LTO)
-    if(LTO)
-        message(STATUS "extlib link-time optimization enabled")
-    endif()
-endif()
-
-# Set output directories
-if(NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-endif()
-if(NOT CMAKE_LIBRARY_OUTPUT_DIRECTORY)
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-endif()
-if(NOT CMAKE_ARCHIVE_OUTPUT_DIRECTORY)
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-endif()
-
-set(CMAKE_BUILD_RPATH_USE_ORIGIN   TRUE)
+option(EXTLIB_BUILD_EXAMPLE "Build examples" ON)
 
 # Set compiler flags
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
@@ -56,10 +29,32 @@ elseif(MSVC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /wd4244 /wd4267")
 endif()
 
-add_subdirectory(libs)
-add_subdirectory(examples)
+add_library(extlib INTERFACE ${PROJECT_SOURCE_DIR}/extlib.h)
+target_include_directories(extlib
+    INTERFACE
+        $<INSTALL_INTERFACE:.>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
+)
+
+if(EXTLIB_BUILD_EXAMPLE)
+    message(STATUS "Building extlib examples")
+    add_subdirectory(examples)
+endif()
 
 # Install
+install(TARGETS extlib
+    EXPORT  extlib-export
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)
+
+# Install header file
+install(FILES
+    ${PROJECT_SOURCE_DIR}/extlib.h
+    DESTINATION include
+)
+
 # Install files other than targets
 install(EXPORT extlib-export
     FILE        ExtlibTargets.cmake
@@ -87,7 +82,7 @@ set(CPACK_PACKAGE_VERSION ${EXTLIB_VERSION})
 set(CPACK_PACKAGE_VERSION_MAJOR ${EXTLIB_VERSION_MAJOR})
 set(CPACK_PACKAGE_VERSION_MINOR ${EXTLIB_VERSION_MINOR})
 set(CPACK_PACKAGE_VERSION_PATCH ${EXTLIB_VERSION_PATCH})
-# set(CPACK_RESOURCE_FILE_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE)
-# set(CPACK_RESOURCE_FILE_README ${CMAKE_CURRENT_SOURCE_DIR}/README.md)
+set(CPACK_RESOURCE_FILE_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE)
+set(CPACK_RESOURCE_FILE_README ${CMAKE_CURRENT_SOURCE_DIR}/README.md)
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "extlib")
 include(CPack)
