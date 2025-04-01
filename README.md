@@ -1,7 +1,7 @@
 # extlib: c extended library
 
-extlib is a collection of libraries that implement common data structures and algorithms that are
-not provided by the c standard library.
+extlib is a library that implement common data structures and algorithms that are not provided by
+the c standard library.
 More specifically, it's a collection of various code that I've written throughout the years to make
 writing code in c faster and easier, by providing tools that are in my eyes essential to any
 programming language.
@@ -14,17 +14,14 @@ examples check out the [examples/example.c](https://github.com/bamless/extlib/bl
 file.
 
 > NOTE: The library by default exports all symbols without any prefix. If you find any conflicts
-> when using in your project, you can define `EXT_LIB_NO_SHORTHANDS` before including any of the
+> when using in your project, you can define `EXTLIB_NO_SHORTHANDS` before including any of the
 > library headers to disable names without prefixes.
 
 # How to use in your project
 
-The simplest way to use the library in your project is to just copy the files you need. Copy the
-headers in `include` (or pick the ones you need) and the corresponding source files in `src` (if
-they exists, some libs are header only, such as `ext_vector` and `ext_assert`) and enjoy.
-
-CMake is also supported, and you can use the `extvector`, `extstring`, `extmap` and `extassert`
-targets to link against the corresponding libraries.
+This is an header-only library, so you can simply include the header in your project and use it.  
+You will also need to define `EXTLIB_IMPLEMENTATION` in exactly one `c` file to include function
+implementations.
 
 # Libraries
 
@@ -36,7 +33,7 @@ use and completely compatible with plain c arrays.
 ### Basic usage
 
 ```c
-    #include "ext_vector.h"
+    #include "extlib.h"
 
     // Let's declare an vector:
     vector(int) vec = NULL;
@@ -95,7 +92,8 @@ c-like char* strings.
 ### Basic usage
 
 ```c
-#include "ext_string.h"
+#define EXTLIB_IMPLEMENTATION
+#include "extlib.h"
 
 // Let's create a new string:
 string str = str_new("New string!");
@@ -140,7 +138,8 @@ to handle data of different types.
 ### Basic usage
 
 ```c
-#include "ext_map.h"
+#define EXTLIB_IMPLEMENTATION
+#include "extlib.h"
 
 typedef struct Entry {
     const char* name;
@@ -203,7 +202,7 @@ int main(void) {
 
 ### Implementation details
 
-**ext_map** is the data structure implemented in the most classical way of the bunch. 
+**ext_map** is the data structure implemented in the most classical way of the bunch.
 `ext_map_init` will initialize a map struct that will store entries of size `entry_sz`. All other
 functions will take in `void*` pointers to the entries, and for this reason its functions are not
 type-safe like the ones of **ext_vector**.
@@ -219,7 +218,7 @@ track of tombstones. The map will grow when its fill ratio (including tombstones
 percentage  (75%). This makes the map really efficient to iterate over, as all the data is kept in a
 contiguous array in memory (even though there might be holes caused by tombstones and hashing).
 
-## ext_assert.h
+## Asserts and unreachable code
 
 the `ext_assert.h` headers contains macros for better debug assertions and unreachable code.
 `ASSERT` will print the file, line, function and a custom message if the condition is not satisfied,
@@ -232,6 +231,6 @@ When compiling in release mode (i.e. with `-DNDEBUG`), the `ASSERT` macro will b
 `UNREACHABLE` macro will be replaced with a `__builtin_unreachable()` call, which will hint the
 compiler that the code is unreachable.
 
-An additional macro called `UNUSED` is provided to hint the compiler that a given varible is not
-actually used in the program. This is useful when a variable is only used in assertions which, when
-elided on release builds, leave the variable unused prompting the compiler to issue a warning.
+The library also provides a `STATIC_ASSERT` macro that will be checked at compile time. This is
+implemented using `static_assert` in C11, while on older versions of C it will use a trick
+that will cause a compilation error if the condition is not satisfied.

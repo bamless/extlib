@@ -1,3 +1,27 @@
+/*
+ * MIT License
+ *
+ * Copyright (c) 2025 Fabrizio Pietrucci
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 #ifndef EXTLIB_H
 #define EXTLIB_H
 
@@ -12,17 +36,56 @@
 
 // ----------------------------------------------------------------------------
 // Allocation functions
+//
+// These functions are used for allocating memory. They are defined as macros to allow
+// for custom allocators.
+//
+// EXTLIB_REALLOC(ptr, size) - reallocates memory. Expects the same behavior as realloc.
+// EXTLIB_FREE(ptr)          - frees memory. Expects the same behavior as free.
+//
+// Since some of the data structures are implemented completely in macros, if you redefine these
+// with your own custom allocators you need to make sure to *always* define them before including
+// this header. For convienience, you can create custom files that includes this one and define your
+// alloc functions, for example:
+//
+// extlib_alloc.h
+// ```c
+// #define EXTLIB_REALLOC(ptr, size) my_custom_realloc(ptr, size)
+// #define EXTLIB_FREE(ptr) my_custom_free(ptr)
+// #include "extlib.h"
+// ```
+//
+// extlib_alloc.c
+// ```c
+// #define EXTLIB_IMPLEMENTATION
+// #include "extlib_alloc.h"
+// ```
 
+// Reallocates memory. Expects the same behavior as realloc.
 #ifndef EXTLIB_REALLOC
     #define EXTLIB_REALLOC(ptr, size) realloc(ptr, size)
 #endif  // EXTLIB_REALLOC
 
+// Frees memory. Expects the same behavior as free.
 #ifndef EXTLIB_FREE
     #define EXTLIB_FREE(ptr) free(ptr)
 #endif  // EXTLIB_FREE
 
 // ----------------------------------------------------------------------------
 // Assertions
+//
+// More convenient assert macros.
+//
+// EXT_ASSERT(cond, msg) - asserts that the condition is true. If not, prints a message and aborts.
+//                         elided in release mode (NDEBUG).
+//
+// EXT_UNREACHABLE() - asserts that the code is unreachable. If reached, prints a message and
+//                     aborts. In release mode (NDEBUG), it is replaced by compiler builtins to
+//                     signal unreachable code.
+//
+// EXT_STATIC_ASSERT(cond, msg) - asserts that the condition is true at compile time. If not,
+//                                generates a compile-time error. This is a portable version of C11
+//                                `static_assert`.
 
 #ifndef NDEBUG
     // More convinient assert macro, accepts a message to be displayed.
@@ -73,6 +136,25 @@
 
 // ----------------------------------------------------------------------------
 // Vector
+//
+// ext_vector is an implementation of a dynamic, growable and type-safe dynamic array, that is
+// comparable with plain C arrays.
+//
+// example usage:
+// ```c
+// #include <stdio.h>
+// #include "extlib.h"
+//
+// int main(void) {
+//   vector(int) vec = NULL;          // create a new vector
+//   vec_push_back(vec, 1);           // push an element to the back
+//   vec_push_back(vec, 2);           // push another element
+//   vec_foreach(const int* i, vec) { // iterate over the vector
+//      printf("%d\n", *i);
+//   }
+//   vec_free(vec);                   // free the vector
+// }
+// ```
 
 // Utility macro for declaring a vector. This is a pointer to a type T, useful for visually
 // distinguish `ext_vector`s from normal `T*`s.
@@ -294,6 +376,32 @@ typedef struct {
 
 // ----------------------------------------------------------------------------
 // String
+//
+// ext_string is an implementation of a dynamic and growable string that is compatible with normal
+// C-strings.
+//
+// An ext_string is always NUL terminated, and can contain arbitrary data. Be careful when using
+// ext_strings that contain NUL characters with standard C string functions, as they may not
+// behave as expected. Use either 'sized' versions of the functions (e.g. strncpy) or use the
+// ext_string functions provided in this library.
+//
+// As ext_string is mutable, it can be used as a 'StringBuilder' or 'StringBuffer' as commonly
+// found in other languages to efficiently build strings. If you don't need NUL termination (such as
+// when working with binary data), you probably want to use ext_vector(char) instead.
+//
+// example usage:
+// ```c
+// #include <stdio.h>
+// #include "extlib.h"
+//
+// int main(void) {
+//   string str = str_new("Hello");  // create a new string
+//   str_append(&str, " World!");        // append to the string
+//   str_append_fmt(&str, " %d", 42);    // append a formatted string
+//   printf("First char: %c\n", str[0]); // print the first character
+//   printf("%s\n", str);                // print the string
+//   str_free(str);                      // free the string
+// }
 
 // Signals an invalid position in the string. Same as SIZE_MAX.
 #define ext_str_npos ((size_t)-1)
@@ -301,7 +409,11 @@ typedef struct {
 // Utility typedef to visually distinguish between `ext_string`s and normal `char*`s
 typedef char* ext_string;
 
-// Creates a new string with the given capacity.
+// Creates an empty string. This will have capacity of 1 for NUL termination.
+ext_string ext_str_new_empty(void);
+// Creates an empty string with the default capacity. The default capacity is 16 bytes + 1 for NUL.
+ext_string ext_str_new_default(void);
+// Creates a new string with the given capacity + 1 for NUL termination.
 ext_string ext_str_new_cap(size_t capacity);
 // Creates a new string with the given data and length.
 ext_string ext_str_new_len(const void* data, size_t len);
@@ -335,24 +447,30 @@ void ext_str_append_vfmt(ext_string* str, const char* fmt, va_list ap);
 void ext_str_append_fmt(ext_string* str, const char* fmt, ...);
 
 // Finds the first occurrence of a substring of arbitrary data of size len in the string, starting
-// at the given position.
+// at the given position. Returns ext_str_npos if not found.
 size_t ext_str_find_len(const ext_string str, size_t start_pos, const void* needle, size_t len);
 // Finds the first occurrence of an `ext_string` in the string, starting at the given position.
+// Returns ext_str_npos if not found.
 size_t ext_str_find_str(const ext_string str, size_t start_pos, const ext_string needle);
 // Finds the first occurrence of a C-style substring in the string, starting at the given position.
+// Returns ext_str_npos if not found.
 size_t ext_str_find(const ext_string str, size_t start_pos, const char* needle);
 
 // Finds the last occurrence of a substring of arbitrary data of size len in the string, starting
-// at the given position.
+// at the given position. Returns ext_str_npos if not found.
 size_t ext_str_rfind_len(const ext_string str, size_t start_pos, const void* needle, size_t len);
 // Finds the last occurrence of an `ext_string` in the string, starting at the given position.
+// Returns ext_str_npos if not found.
 size_t ext_str_rfind_str(const ext_string str, size_t start_pos, const ext_string needle);
 // Finds the last occurrence of a C-style substring in the string, starting at the given position.
+// Returns ext_str_npos if not found.
 size_t ext_str_rfind(const ext_string str, size_t start_pos, const char* needle);
 
 // Finds the first occurrence of a character in the string, starting at the given position.
+// Returns ext_str_npos if not found.
 size_t ext_str_find_char(const ext_string str, size_t start_pos, int c);
 // Finds the last occurrence of a character in the string, starting at the given position.
+// Returns ext_str_npos if not found.
 size_t ext_str_rfind_char(const ext_string str, size_t start_pos, int c);
 
 // Converts the string to lowercase. Assumes the string is ASCII.
@@ -367,15 +485,19 @@ void ext_str_split_free(ext_vector(ext_string) split);
 
 // Shrinks the string capacity to fit the current size.
 void ext_str_shrink_to_fit(ext_string* str);
-// Reserves memory for 'amount' characters in the string. Does nothing if 'amount' is less than the
+// Reserves memory for 'amount' bytes in the string. Does nothing if 'amount' is less than the
 // current capacity. The size of the string is not changed.
 void ext_str_reserve(ext_string* str, size_t amount);
 // Resizes the string to 'new_size' characters. Allocates memory if the new size is larger than the
-// old size. It zeros the new characters if any.
-void ext_str_resize_zeroed(ext_string* str, size_t new_size);
-// Resizes the string to 'new_size' characters. Allocates memory if the new size is larger than the
 // old size. The new characters, if any, are not initialized.
+// This is similar to `ext_str_reserve`, but it also sets the size of the string to 'new_size' and
+// adds a NUL terminator at the end.
 void ext_str_resize(ext_string* str, size_t new_size);
+// Resizes the string to 'new_size' characters. Allocates memory if the new size is larger than the
+// old size. It zeros the new characters if any.
+// This is similar to `ext_str_reserve`, but it also sets the size of the string to 'new_size' and
+// adds a NUL terminator at the end.
+void ext_str_resize_zeroed(ext_string* str, size_t new_size);
 
 // Compares two strings lexicographically. Returns 0 if equal, < 0 if s1 < s2, > 0 if s1 > s2.
 int ext_str_compare(const ext_string s1, const ext_string s2);
@@ -390,6 +512,12 @@ size_t ext_str_capacity(const ext_string str);
     #define str_npos ext_str_npos
 
 typedef ext_string string;
+static inline string str_new_empty(void) {
+    return ext_str_new_empty();
+}
+static inline string str_new_default(void) {
+    return ext_str_new_default();
+}
 static inline ext_string str_new_cap(size_t capacity) {
     return ext_str_new_cap(capacity);
 }
@@ -509,6 +637,7 @@ static inline size_t str_capacity(const ext_string str) {
 
 #ifdef EXTLIB_IMPLEMENTATION
 
+    #define EXT_STR_DEFAULT_CAPACITY (16)
     #define EXT_STR_LOG_GROWTH_TRESH (1024 * 1024)
     #define ext_str_header_(s)       ((str_header_t_*)(s - sizeof(str_header_t_)))
 
@@ -541,9 +670,18 @@ static void ext_str_maybe_grow_(ext_string* str, size_t amount) {
     }
 }
 
+ext_string ext_str_new_empty(void) {
+    return ext_str_new_cap(0);
+}
+
+ext_string ext_str_new_default(void) {
+    return ext_str_new_cap(EXT_STR_DEFAULT_CAPACITY);
+}
+
 ext_string ext_str_new_cap(size_t capacity) {
     str_header_t_* header = EXTLIB_REALLOC(NULL, sizeof(*header) + capacity + 1);
     header->size = 0;
+    header->data[0] = '\0';
     header->capacity = capacity + 1;
     return header->data;
 }
@@ -812,20 +950,18 @@ void ext_str_reserve(ext_string* str, size_t amount) {
     }
 }
 
-void ext_str_resize_zeroed(ext_string* str, size_t new_size) {
-    size_t size = ext_str_size(*str);
-    if(new_size > size) {
-        ext_str_maybe_grow_(str, new_size - size);
-        memset(*str + size, 0, new_size - size);
-    }
+void ext_str_resize(ext_string* str, size_t new_size) {
+    ext_str_reserve(str, new_size);
     ext_str_set_size_(str, new_size);
     (*str)[new_size] = '\0';
 }
 
-void ext_str_resize(ext_string* str, size_t new_size) {
-    ext_str_maybe_grow_(str, new_size);
-    ext_str_set_size_(str, new_size);
-    (*str)[new_size] = '\0';
+void ext_str_resize_zeroed(ext_string* str, size_t new_size) {
+    size_t old_size = ext_str_size(*str);
+    ext_str_resize(str, new_size);
+    if(new_size > old_size) {
+        memset(*str + old_size, 0, new_size - old_size);
+    }
 }
 
 int ext_str_compare(const ext_string s1, const ext_string s2) {
@@ -852,6 +988,48 @@ size_t ext_str_capacity(const ext_string str) {
 
 // ----------------------------------------------------------------------------
 // Hashmap
+//
+// ext_map is a hashmap implementation that uses open addressing with linear probing. It is
+// designed to be simple and efficient, and is suitable for small to medium-sized hashmaps.
+//
+// example usage:
+// ```c
+// #include <stdio.h>
+// #include <string.h>
+// #include "extlib.h"
+//
+// typedef struct { const char* name; int value; } Entry;
+//
+// static uint32_t hash(const void* entry) {
+//   const Entry* e = entry;
+//   return map_hash_bytes(e->name, strlen(e->name));
+// }
+//
+// static bool compare(const void* entry1, const void* entry2) {
+//   const Entry *e1 = entry1, *e2 = entry2;
+//   return strcmp(e1->name, e2->name) == 0;
+// }
+//
+// int main(void) {
+//  map map;
+//  map_init(&map, sizeof(Entry), hash, compare);
+//
+//  map_put(&map, &(Entry){.name = "Entry 1", .value = 10});
+//  map_put(&map, &(Entry){.name = "Entry 2", .value = 20});
+//
+//  const Entry* entry = map_get(&map, &(Entry){.name = "Entry 1"});
+//  if(entry) printf("Found: %s = %d\n", entry->name, entry->value);
+//
+//  map_erase(&map, &(Entry){.name = "Entry 1"});
+//  assert(map_get(&map, &(Entry){.name = "Entry 1"}) == NULL);
+//
+//  for(const Entry* it = map_begin(&map); it != map_end(&map); it = map_incr(&map, it)) {
+//      printf("Entry: %s = %d\n", it->name, it->value);
+//  }
+//
+//  map_free(&map);
+// }
+// ```
 
 // Hashmap entry hash callback function
 typedef uint32_t (*hash_fn)(const void* entry);
@@ -879,7 +1057,7 @@ void ext_map_init(ext_map* map, size_t entry_sz, hash_fn hash, compare_fn compar
 void ext_map_free(ext_map* map);
 
 // Gets the entry in the hashmap. Returns NULL if not found.
-const void* ext_map_get(const ext_map* map, const void* entry);
+void* ext_map_get(const ext_map* map, const void* entry);
 // Puts an entry in the hashmap. Returns true if the entry was added, false if it was replaced
 // (already existed in the map).
 bool ext_map_put(ext_map* map, const void* entry);
@@ -903,11 +1081,11 @@ uint32_t ext_map_hash_bytes(const void* bytes, size_t size);
 // Hashmap iterators
 
 // Returns a pointer to the first entry in the hashmap.
-const void* ext_map_begin(const ext_map* map);
+void* ext_map_begin(const ext_map* map);
 // Returns a pointer to the end of the hashmap.
-const void* ext_map_end(const ext_map* map);
+void* ext_map_end(const ext_map* map);
 // Increments the iterator to the next entry in the hashmap.
-const void* ext_map_incr(const ext_map* map, const void* it);
+void* ext_map_incr(const ext_map* map, const void* it);
 
 #ifndef EXTLIB_NO_SHORTHANDS
 
@@ -918,7 +1096,7 @@ static inline void map_init(ext_map* map, size_t entry_sz, hash_fn hash, compare
 static inline void map_free(ext_map* map) {
     ext_map_free(map);
 }
-static inline const void* map_get(const ext_map* map, const void* entry) {
+static inline void* map_get(const ext_map* map, const void* entry) {
     return ext_map_get(map, entry);
 }
 static inline bool map_put(ext_map* map, const void* entry) {
@@ -939,13 +1117,13 @@ static inline size_t map_capacity(const ext_map* map) {
 static inline bool map_empty(const ext_map* map) {
     return ext_map_empty(map);
 }
-static inline const void* map_begin(const ext_map* map) {
+static inline void* map_begin(const ext_map* map) {
     return ext_map_begin(map);
 }
-static inline const void* map_end(const ext_map* map) {
+static inline void* map_end(const ext_map* map) {
     return ext_map_end(map);
 }
-static inline const void* map_incr(const ext_map* map, const void* it) {
+static inline void* map_incr(const ext_map* map, const void* it) {
     return ext_map_incr(map, it);
 }
 static inline uint32_t map_hash_bytes(const void* bytes, size_t size) {
@@ -967,11 +1145,11 @@ static inline uint32_t map_hash_bytes(const void* bytes, size_t size) {
     #define EXT_MAP_IS_EMPTY(bucket) ((bucket)->hash == EXT_MAP_EMPTY_MARK)
     #define EXT_MAP_IS_VALID(bucket) (!EXT_MAP_IS_EMPTY(bucket) && !EXT_MAP_IS_TOMB(bucket))
 
-static void* entry_at(void* entries, size_t entry_sz, size_t idx) {
+static void* entry_at_(void* entries, size_t entry_sz, size_t idx) {
     return ((char*)entries) + idx * entry_sz;
 }
 
-static void map_grow(ext_map* map) {
+static void map_grow_(ext_map* map) {
     size_t new_cap = map->capacity_mask ? (map->capacity_mask + 1) * 2 : EXT_MAP_INITIAL_CAPACITY;
     void* new_entries = EXTLIB_REALLOC(NULL, map->entry_sz * new_cap);
     ext_map_bucket_* new_buckets = EXTLIB_REALLOC(NULL, sizeof(ext_map_bucket_) * new_cap);
@@ -985,8 +1163,8 @@ static void map_grow(ext_map* map) {
             if(EXT_MAP_IS_VALID(buck)) {
                 size_t new_idx = buck->hash & (new_cap - 1);  // Read as: buck->hash % new_cap
                 new_buckets[new_idx] = *buck;
-                memcpy(entry_at(new_entries, map->entry_sz, new_idx),
-                       entry_at(map->entries, map->entry_sz, i), map->entry_sz);
+                memcpy(entry_at_(new_entries, map->entry_sz, new_idx),
+                       entry_at_(map->entries, map->entry_sz, i), map->entry_sz);
                 map->num_entries++;
             }
         }
@@ -1000,12 +1178,12 @@ static void map_grow(ext_map* map) {
     map->capacity_mask = new_cap - 1;
 }
 
-static uint32_t hash_entry(const ext_map* map, const void* entry) {
+static uint32_t hash_entry_(const ext_map* map, const void* entry) {
     uint32_t hash = map->hash(entry);
     return hash < 2 ? hash + 2 : hash;  // reserve hash values 0 and 1
 }
 
-static size_t find_index(const ext_map* map, const void* entry, uint32_t hash) {
+static size_t find_index_(const ext_map* map, const void* entry, uint32_t hash) {
     size_t idx = hash & map->capacity_mask;
 
     bool tomb_found = false;
@@ -1021,7 +1199,7 @@ static size_t find_index(const ext_map* map, const void* entry, uint32_t hash) {
                 tomb_idx = idx;
             }
         } else if(buck->hash == hash &&
-                  map->compare(entry_at(map->entries, map->entry_sz, idx), entry)) {
+                  map->compare(entry_at_(map->entries, map->entry_sz, idx), entry)) {
             return idx;
         }
         idx = (idx + 1) & map->capacity_mask;  // Read as: (idx + 1) % (map->capacity_mask + 1)
@@ -1040,25 +1218,25 @@ void ext_map_free(ext_map* map) {
     #endif
 }
 
-const void* ext_map_get(const ext_map* map, const void* entry) {
-    uint32_t hash = hash_entry(map, entry);
-    size_t idx = find_index(map, entry, hash);
+void* ext_map_get(const ext_map* map, const void* entry) {
+    uint32_t hash = hash_entry_(map, entry);
+    size_t idx = find_index_(map, entry, hash);
 
     ext_map_bucket_* buck = &map->buckets[idx];
     if(!EXT_MAP_IS_VALID(buck)) {
         return NULL;
     }
 
-    return entry_at(map->entries, map->entry_sz, idx);
+    return entry_at_(map->entries, map->entry_sz, idx);
 }
 
 bool ext_map_put(ext_map* map, const void* entry) {
     if(map->num_entries + 1 > EXT_MAP_MAX_ENTRY_LOAD(map->capacity_mask + 1)) {
-        map_grow(map);
+        map_grow_(map);
     }
 
-    uint32_t hash = hash_entry(map, entry);
-    size_t idx = find_index(map, entry, hash);
+    uint32_t hash = hash_entry_(map, entry);
+    size_t idx = find_index_(map, entry, hash);
     ext_map_bucket_* buck = &map->buckets[idx];
 
     bool is_new = !EXT_MAP_IS_VALID(buck);
@@ -1068,14 +1246,14 @@ bool ext_map_put(ext_map* map, const void* entry) {
     }
 
     buck->hash = hash;
-    memcpy(entry_at(map->entries, map->entry_sz, idx), entry, map->entry_sz);
+    memcpy(entry_at_(map->entries, map->entry_sz, idx), entry, map->entry_sz);
 
     return is_new;
 }
 
 bool ext_map_erase(ext_map* map, const void* entry) {
-    uint32_t hash = hash_entry(map, entry);
-    size_t idx = find_index(map, entry, hash);
+    uint32_t hash = hash_entry_(map, entry);
+    size_t idx = find_index_(map, entry, hash);
 
     ext_map_bucket_* buck = &map->buckets[idx];
     if(EXT_MAP_IS_VALID(buck)) {
@@ -1109,7 +1287,7 @@ bool ext_map_empty(const ext_map* map) {
     return map->size == 0;
 }
 
-const void* ext_map_begin(const ext_map* map) {
+void* ext_map_begin(const ext_map* map) {
     if(!map->entries) return NULL;
 
     for(size_t i = 0; i <= map->capacity_mask; i++) {
@@ -1121,16 +1299,16 @@ const void* ext_map_begin(const ext_map* map) {
     return ext_map_end(map);
 }
 
-const void* ext_map_end(const ext_map* map) {
+void* ext_map_end(const ext_map* map) {
     return map->entries ? map->entries + ext_map_capacity(map) * map->entry_sz : NULL;
 }
 
-static size_t iterator_index(const ext_map* map, const void* it) {
+static size_t iterator_index_(const ext_map* map, const void* it) {
     return (it - map->entries) / map->entry_sz;
 }
 
-const void* ext_map_incr(const ext_map* map, const void* it) {
-    for(size_t i = iterator_index(map, it) + 1; i <= map->capacity_mask; i++) {
+void* ext_map_incr(const ext_map* map, const void* it) {
+    for(size_t i = iterator_index_(map, it) + 1; i <= map->capacity_mask; i++) {
         if(EXT_MAP_IS_VALID(&map->buckets[i])) {
             return map->entries + i * map->entry_sz;
         }
