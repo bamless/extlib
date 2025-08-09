@@ -1,0 +1,68 @@
+<!--
+Example: arena allocator
+Uses the wasm module compiled from `./03_arena.c` to implement a simple calculator web page.
+To serve the page:
+```
+cd examples
+python -m http.server 8080
+```
+-->
+<html>
+    <head>
+        <script>
+            <!-- Initialize wasm module -->
+            (async() => {
+                function make_environment(...envs) {
+                    return new Proxy(envs, {
+                        get(target, prop, receiver) {
+                            for (let env of envs) {
+                                if (env.hasOwnProperty(prop)) {
+                                    return env[prop];
+                                }
+                            }
+                            return (...args) => console.error("NOT IMPLEMENTED: " + prop, args);
+                        }
+                    });
+                }
+
+                window.w = await WebAssembly.instantiateStreaming(fetch("./03_arena.wasm"), {
+                    "env": make_environment({
+                        assert: function(c) {
+                            if(!c) throw new Error("Assertion failed");
+                        }
+                    })
+                });
+            })();
+        </script>
+        <script>
+            function evalExpr() {
+                const expr = document.getElementById("expr").value;
+
+                // Copy the expression into wasm memory using temp allocator
+                const ptr = w.instance.exports.ext_temp_alloc(expr.length + 1);
+                const memory = new Uint8Array(w.instance.exports.memory.buffer);
+                memory.set(new TextEncoder().encode(expr + "\0"), ptr);
+                // Eval the expression
+                const res = w.instance.exports.eval_expr(ptr);
+                // reset the temp memory
+                w.instance.exports.ext_temp_reset();
+
+                const div = document.getElementById("res");
+                if(!isNaN(res)) {
+                    div.innerText = res + "";
+                } else {
+                    div.innerText = "error";
+                }
+            }
+        </script>
+    </head>
+    <body>
+        <label for="expr">Type expression</label>
+        <br/>
+        <input type="string" id="expr">
+        <br/>
+        <button onclick="evalExpr()">Calc</button>
+        <h3>Result</h3>
+        <div id="res"></div>
+    </body
+</html>

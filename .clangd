@@ -1,0 +1,5 @@
+CompileFlags:
+  Add: [-xc, -std=c99, -Wall, -Wextra]
+
+SemanticTokens:
+  DisabledKinds: [InactiveCode]

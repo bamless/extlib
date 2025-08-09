@@ -1,2 +1,9 @@
 .cache
-/build*
+
+test/test
+test/test.exe
+test/out.txt
+
+examples/*
+!examples/*.[ch]
+!examples/*html
