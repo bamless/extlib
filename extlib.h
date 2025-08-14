@@ -351,12 +351,16 @@ void ext_push_context(Ext_Context *ctx);
 Ext_Context *ext_pop_context(void);
 
 // Utility macro to push/pop context between `code`
-#define EXT_PUSH_CONTEXT(ctx, code) \
-    do {                            \
-        push_context(ctx);          \
-        code;                       \
-        pop_context();              \
-    } while(0)
+//
+// USAGE:
+// ```c
+// PUSH_CONTEXT(&myctx) {
+//    // ... do stuff
+// }
+// // context automatically popped
+// ```
+#define EXT_PUSH_CONTEXT \
+    for(int i_ = (ext_push_context(ctx), 0); i_ != 1; ext_push_context(), i_ = 1)
 
 // -----------------------------------------------------------------------------
 // SECTION: Allocators
