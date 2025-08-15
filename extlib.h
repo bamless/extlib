@@ -587,18 +587,14 @@ typedef struct Ext_Arena {
     size_t allocated;
 } Ext_Arena;
 
-// Creates a new arena with default parameters. Defined as a macro so it can be used in a const
-// context.
-#define ext_default_arena()                                                                \
-    (Ext_Arena) {                                                                          \
-        .base = {ext__arena_alloc_wrap_, ext__arena_realloc_wrap_, ext__arena_free_wrap_}, \
-    }
-
 // Creates a new arena. Defined as a macro so it can be used in a const context.
 //
 // USAGE
 // ```c
+// // Customize parameters
 // Arena a = new_arena(.page_allocator = &my_allocator, .alignment = 8)
+// // Default parameters
+// Arena def_arena = new_arena();
 // ```
 // See `Ext_Arena` struct for all available options
 #define ext_new_arena(...)                                                                 \
@@ -3155,7 +3151,6 @@ typedef Ext_Arena Arena;
 typedef Ext_ArenaPage ArenaPage;
 typedef Ext_ArenaCheckpoint ArenaCheckpoint;
 #define new_arena        ext_new_arena
-#define default_arena    ext_default_arena
 #define arena_init       ext_arena_init
 #define arena_alloc      ext_arena_alloc
 #define arena_realloc    ext_arena_realloc
