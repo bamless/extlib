@@ -273,6 +273,7 @@ void assert(int c);  // TODO: are we sure we want to require wasm embedder to pr
 
 // Returns the required offset to align `o` to `s` bytes
 #define EXT_ALIGN(o, s) (-(uintptr_t)(o) & (s - 1))
+
 // Returns the number of elements of a c array
 #define EXT_ARR_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
@@ -284,6 +285,24 @@ void assert(int c);  // TODO: are we sure we want to require wasm embedder to pr
 #else
 #define EXT_PRINTF_FORMAT(a, b)
 #endif  // __GNUC__
+
+// Assigns passed in value to variable, and jumps to label.
+//
+// USAGE:
+// ```c
+// bool res = true;
+// // ... do some fallible operations
+// if(err) return_exit(false);           // This will assign false to `res` and jumps to exit
+// if(err) return_exit(false, exit)      // Can also customize the label (second arg)
+// if(err) return_exit(false, exit, res) // Can also customize the variable that will be assigned
+//                                       // (third arg)
+//
+// exit:
+//     // ... free stuff
+//     return res;
+// ```
+#define ext_return_exit(...) \
+    ext__return_tox_(__VA_ARGS__, ext__return_to3_, ext__return_to2_, ext__return_to1_)(__VA_ARGS__)
 
 // -----------------------------------------------------------------------------
 // SECTION: Logging
@@ -1582,8 +1601,18 @@ static inline size_t ext_hash_bytes_(const void *p, size_t len) {
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif  // __GNUC__
-        // End of stbds.h
-        // -----------------------------------------------------------------------------
+
+// End of stbds.h
+// -----------------------------------------------------------------------------
+
+#define ext__return_tox_(a, b, c, d, ...) d
+#define ext__return_to1_(result_)         ext__return_to3_(result_, exit, res)
+#define ext__return_to2_(result_, label_) ext__return_to3_(result_, label_, res)
+#define ext__return_to3_(result_, label_, res_var_) \
+    do {                                            \
+        res_var_ = result_;                         \
+        goto label_;                                \
+    } while(0)
 
 #ifdef EXTLIB_IMPL
 // -----------------------------------------------------------------------------
@@ -2446,9 +2475,10 @@ void ext_free_paths(Ext_Paths *paths) {
 }
 
 bool ext_read_file(const char *path, Ext_StringBuffer *sb) {
+    bool res = true;
     FILE *f = fopen(path, "rb");
-    if(!f) goto error;
-    if(fseek(f, 0, SEEK_END) < 0) goto error;
+    if(!f) ext_return_exit(false);
+    if(fseek(f, 0, SEEK_END) < 0) ext_return_exit(false);
 
     long long size;
 #ifdef EXT_WINDOWS
@@ -2456,44 +2486,41 @@ bool ext_read_file(const char *path, Ext_StringBuffer *sb) {
 #else
     size = ftell(f);
 #endif  // EXT_WINDOWS
-    if(size < 0) goto error;
-    if(fseek(f, 0, SEEK_SET) < 0) goto error;
+    if(size < 0) ext_return_exit(false);
+    if(fseek(f, 0, SEEK_SET) < 0) ext_return_exit(false);
 
     ext_sb_reserve_exact(sb, sb->size + size);
     fread(sb->items + sb->size, 1, size, f);
-    if(ferror(f)) goto error;
+    if(ferror(f)) ext_return_exit(false, exit, res);
     sb->size = size;
 
-    fclose(f);
-    return true;
-error:
-    ext_log(EXT_ERROR, "couldn't read file %s: %s", path, strerror(errno));
+exit:
     int saved_errno = errno;
+    if(!res) ext_log(EXT_ERROR, "couldn't read file %s: %s", path, strerror(errno));
     if(f) fclose(f);
     errno = saved_errno;
-    return false;
+    return res;
 }
 
 bool ext_write_file(const char *path, const void *mem, size_t size) {
+    bool res = true;
     FILE *f = fopen(path, "wb");
-    if(!f) goto error;
+    if(!f) ext_return_exit(false);
 
     const char *data = mem;
     while(size > 0) {
         size_t written = fwrite(data, 1, size, f);
-        if(ferror(f)) goto error;
+        if(ferror(f)) ext_return_exit(false);
         size -= written;
         data += written;
     }
 
-    fclose(f);
-    return true;
-error:
-    ext_log(EXT_ERROR, "couldn't write file %s: %s", path, strerror(errno));
+exit:
     int saved_errno = errno;
+    if(!res) ext_log(EXT_ERROR, "couldn't write file %s: %s", path, strerror(errno));
     if(f) fclose(f);
     errno = saved_errno;
-    return false;
+    return res;
 }
 
 int ext_read_line(FILE *f, Ext_StringBuffer *sb) {
@@ -2531,10 +2558,7 @@ bool ext_read_dir(const char *path, Ext_Paths *paths) {
     char *dir = ext_temp_sprintf("%s\\*", path);
     WIN32_FIND_DATA find_data;
     HANDLE dir_handle = FindFirstFile(dir, &find_data);
-    if(dir_handle == INVALID_HANDLE_VALUE) {
-        res = false;
-        goto exit;
-    }
+    if(dir_handle == INVALID_HANDLE_VALUE) ext_return_exit(false);
 
     do {
         if(strcmp(".", find_data.cFileName) != 0 && strcmp("..", find_data.cFileName) != 0) {
@@ -2542,10 +2566,7 @@ bool ext_read_dir(const char *path, Ext_Paths *paths) {
         }
     } while(FindNextFile(dir_handle, &find_data) != 0);
 
-    if(GetLastError() != ERROR_NO_MORE_FILES) {
-        res = false;
-        goto exit;
-    }
+    if(GetLastError() != ERROR_NO_MORE_FILES) ext_return_exit(false);
 
 exit:
     if(!res) {
@@ -2557,21 +2578,16 @@ exit:
     return res;
 #else
     DIR *dir = opendir(path);
-    if(!dir) {
-        res = false;
-        goto exit;
-    }
+    if(!dir) ext_return_exit(false);
 
     for(;;) {
         errno = 0;
         struct dirent *entry = readdir(dir);
-        if(!entry) {
-            if(errno) res = false;
-            goto exit;
-        }
+        if(!entry) ext_return_exit(errno ? false : true);
         if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
         ext_array_push(paths, ext_strdup_alloc(entry->d_name, a));
     }
+
 exit:
     if(!res) ext_log(EXT_ERROR, "couldn't read directory '%s': %s", path, strerror(errno));
     if(dir) closedir(dir);
@@ -2607,10 +2623,7 @@ static bool ext__delete_dir_(const char *path) {
 
     bool res = true;
     Ext_Paths paths = {0};
-    if(!ext_read_dir(path, &paths)) {
-        res = false;
-        goto exit;
-    }
+    if(!ext_read_dir(path, &paths)) ext_return_exit(false);
 
     ext_array_foreach(char *, it, &paths) {
         void *checkpoint = ext_temp_checkpoint();
@@ -2624,30 +2637,18 @@ static bool ext__delete_dir_(const char *path) {
         }
 
         Ext_FileType type = ext_get_file_type(abs);
-        if(type == EXT_FILE_ERR) {
-            res = false;
-            goto exit;
-        }
+        if(type == EXT_FILE_ERR) ext_return_exit(false);
 
         if(type == EXT_FILE_DIR) {
-            if(!ext__delete_dir_(abs)) {
-                res = false;
-                goto exit;
-            }
+            if(!ext__delete_dir_(abs)) ext_return_exit(false);
         } else {
-            if(!ext_delete_file(abs)) {
-                res = false;
-                goto exit;
-            }
+            if(!ext_delete_file(abs)) ext_return_exit(false);
         }
 
         ext_temp_rewind(checkpoint);
     }
 
-    if(!ext_delete_file(path)) {
-        res = false;
-        goto exit;
-    }
+    if(!ext_delete_file(path)) ext_return_exit(false);
 
 exit:
     ext_free_paths(&paths);
@@ -2670,7 +2671,7 @@ bool ext_delete_dir_recursively(const char *path) {
     ext_pop_context();
 
     if(res) ext_log(EXT_INFO, "deleted directory '%s'", path);
-    else ext_log(EXT_ERROR, "couldn't delete directory '%s'", path);
+    else ext_log(EXT_ERROR, "couldn't recursively delete directory '%s'", path);
     return res;
 }
 
@@ -2843,32 +2844,23 @@ int ext_cmd_read(const char *cmd, Ext_StringBuffer *sb) {
     const char *mode = "r";
 #endif  // EXT_WINDOWS
     FILE *p = popen(cmd, mode);
-    if(!p) {
-        res = -1;
-        goto error;
-    }
+    if(!p) ext_return_exit(-1);
 
     const size_t chunk_size = 512;
     for(;;) {
         ext_sb_reserve(sb, sb->size + chunk_size);
         size_t read = fread(sb->items + sb->size, 1, sb->capacity - sb->size, p);
         sb->size += read;
-        if(ferror(p)) {
-            res = -1;
-            goto error;
-        }
+        if(ferror(p)) ext_return_exit(-1);
         if(feof(p)) break;
     }
 
-    res = pclose(p);
-    if(res < 0) goto error;
-    return res;
-error:
-    ext_log(EXT_ERROR, "couldn't exec cmd '%s' for read: %s", cmd, strerror(errno));
+exit:
     int saved_errno = errno;
-    if(p) pclose(p);
+    if(res) ext_log(EXT_ERROR, "couldn't exec cmd '%s' for read: %s", cmd, strerror(errno));
+    if(p && (res = pclose(p))) ext_log(EXT_ERROR, "command returned exit code %d", res);
     errno = saved_errno;
-    return -1;
+    return res;
 }
 
 int ext_cmd_write(const char *cmd, const void *mem, size_t size) {
@@ -2882,31 +2874,22 @@ int ext_cmd_write(const char *cmd, const void *mem, size_t size) {
     const char *mode = "w";
 #endif  // EXT_WINDOWS
     FILE *p = popen(cmd, mode);
-    if(!p) {
-        res = -1;
-        goto error;
-    }
+    if(!p) ext_return_exit(-1);
 
     const char *data = mem;
     while(size > 0) {
         size_t written = fwrite(data, 1, size, p);
-        if(ferror(p)) {
-            res = -1;
-            goto error;
-        }
+        if(ferror(p)) ext_return_exit(-1);
         size -= written;
         data += written;
     }
 
-    res = pclose(p);
-    if(res < 0) goto error;
-    return res;
-error:
-    ext_log(EXT_ERROR, "couldn't exec cmd '%s' for write: %s", cmd, strerror(errno));
+exit:
     int saved_errno = errno;
-    if(p) pclose(p);
+    if(res) ext_log(EXT_ERROR, "couldn't exec cmd '%s' for write: %s", cmd, strerror(errno));
+    if(p && (res = pclose(p))) ext_log(EXT_ERROR, "command returned exit code %d", res);
     errno = saved_errno;
-    return -1;
+    return res;
 }
 #endif  // EXTLIB_NO_STD
 
@@ -3111,6 +3094,7 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define ALIGN         EXT_ALIGN
 #define ARR_SIZE      EXT_ARR_SIZE
 #define PRINTF_FORMAT EXT_PRINTF_FORMAT
+#define return_exit   ext_return_exit
 
 #define INFO       EXT_INFO
 #define WARNING    EXT_WARNING
