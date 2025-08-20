@@ -378,8 +378,24 @@ Ext_Context *ext_pop_context(void);
 // }
 // // context automatically popped
 // ```
-#define EXT_PUSH_CONTEXT \
-    for(int i_ = (ext_push_context(ctx), 0); i_ != 1; ext_push_context(), i_ = 1)
+#define EXT_PUSH_CONTEXT(ctx) \
+    for(int i_ = (ext_push_context(ctx), 0); i_ != 1; (ext_pop_context(), i_ = 1))
+
+// Utility macro to push/pop context with an allocator between code.
+// Simplifies pushing when the only thing you want to customize is the allocator.
+//
+// USAGE:
+// ```c
+// PUSH_ALLOCATOR(&temp_allocator.base) {
+//    // ... do stuff
+// }
+// // context automatically popped
+// ```
+#define EXT_PUSH_ALLOCATOR(allocator)                                          \
+    Ext_Context EXT_CONCAT_(ctx_, __LINE__) = *ext_context;                    \
+    EXT_CONCAT_(ctx_, __LINE__).alloc = (allocator);                           \
+    for(int i_ = (ext_push_context(&EXT_CONCAT_(ctx_, __LINE__)), 0); i_ != 1; \
+        (ext_pop_context(), i_ = 1))
 
 // -----------------------------------------------------------------------------
 // SECTION: Allocators
@@ -3103,6 +3119,7 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 
 typedef Ext_Context Context;
 #define PUSH_CONTEXT           EXT_PUSH_CONTEXT
+#define PUSH_ALLOCATOR         EXT_PUSH_ALLOCATOR
 #define push_context_allocator ext_push_context_allocator
 #define push_context           ext_push_context
 #define pop_context            ext_pop_context
