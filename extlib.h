@@ -797,7 +797,7 @@ char *ext_arena_vsprintf(Ext_Arena *a, const char *fmt, va_list ap);
     do {                                                                        \
         ext_array_reserve(a, (a)->size + (count));                              \
         memcpy((a)->items + (a)->size, (elems), (count) * sizeof(*(a)->items)); \
-        (a)->size = (count);                                                    \
+        (a)->size += (count);                                                    \
     } while(0)
 
 // Removes and returns the last element in the dynamic array. Complexity O(1).
