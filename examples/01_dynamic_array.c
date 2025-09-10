@@ -32,12 +32,12 @@ int main(void) {
     if(res < 0) return 1;
 
     qsort(lines.items, lines.size, sizeof(*lines.items), qsort_strcmp);
-    ext_array_foreach(char*, it, &lines) {
+    array_foreach(char*, it, &lines) {
         printf("%s", *it);
     }
 
     sb_free(&line);
-    ext_array_foreach(char*, it, &lines) {
+    array_foreach(char*, it, &lines) {
         ext_free(*it, strlen(*it) + 1);
     }
     array_free(&lines);
