@@ -449,9 +449,9 @@ typedef struct Ext_Allocator {
 //   Allocates a new value of size `sizeof(T)` using `ext_alloc`
 // ext_new_array:
 //   Allocates a new array of size `sizeof(T)*count` using `ext_alloc`
-// ext_free:
+// ext_delete:
 //   Deletes allocated memory of `sizeof(T)` using `ext_free`
-// ext_free_array:
+// ext_delete_array:
 //   Deletes an array of `sizeof(T)*count` using `ext_free`
 // ext_clone:
 //   Creates a copy of the provided pointer using `ext_memdup`
@@ -589,14 +589,14 @@ typedef enum {
 // An arena allocator simplifies memory management by allowing multiple allocations to be freed
 // as a group, as well as enabling efficient memory management by reusing a previously reset arena.
 // `Arena` conforms to the `Allocator` interface, making it possible to use it as a context
-// allocator, or the allocator of a dynamic array or hasmap.
+// allocator, or the allocator of a dynamic array or hashmap.
 //
 // USAGE
 // ```c
 // Arena a = default_arena()      // creates an arena with default parameters
 // a = new_arena(.alignment = 32) // or, initialize the arena with custom parameters
 //
-// // ... allocate memory, push it as context allocator, ext
+// // ... allocate memory, push it as context allocator, etc...
 //
 // arena_reset(&a)              // reset the arena all at once
 // arena_rewind(&a, checkpoint) // or, better yet, restore its state to a checkpoint, so that
@@ -606,7 +606,6 @@ typedef enum {
 // ```
 typedef struct Ext_Arena {
     Ext_Allocator base;
-
     // `Allocator` used to allocate pages. By default uses the current context allocator.
     Ext_Allocator *page_allocator;
     // The alignment of the allocations returned by the arena. By default is
@@ -616,10 +615,10 @@ typedef struct Ext_Arena {
     size_t page_size;
     // Arena flags. See `ArenaFlags` enum
     Ext_ArenaFlags flags;
-
+    // Currently allocated bytes in the arena
+    size_t allocated;
     // Private fields
     Ext_ArenaPage *first_page, *last_page;
-    size_t allocated;
 } Ext_Arena;
 
 // Creates a new arena. Defined as a macro so it can be used in a const context.
@@ -735,7 +734,7 @@ char *ext_arena_vsprintf(Ext_Arena *a, const char *fmt, va_list ap);
         (void *)it < (void *)end; it++)
 
 // Reserves at least `requested_cap` elements in the dynamic array, growing the backing array if
-// necessary. `requested_ap` is treated as an absolute value, so if you want to the the current
+// necessary. `requested_cap` is treated as an absolute value, so if you want to take the current
 // size into account you'll have to do it yourself: `array_reserve(&a, a.size + new_cap)`.
 #define ext_array_reserve(arr, requested_cap)                                              \
     do {                                                                                   \
@@ -834,7 +833,7 @@ char *ext_arena_vsprintf(Ext_Arena *a, const char *fmt, va_list ap);
 
 // Resizes the array in place so that its size is `new_sz`. If `new_sz` is greater than the
 // current size, the array is extended by the difference, otherwise it is simply truncated.
-// Beware that in case `new_size` > size the new elements will be uninitialized.
+// Beware that in case `new_size > size` the new elements will be uninitialized.
 #define ext_array_resize(a, new_sz)             \
     do {                                        \
         ext_array_reserve_exact((a), (new_sz)); \
@@ -945,7 +944,7 @@ typedef struct {
 void ext_sb_replace(Ext_StringBuffer *sb, size_t start, const char *to_replace, char replacement);
 // Transforms the string buffer to a cstring, by appending NUL and shrinking it to fit its size.
 // The string buffer is reset after this operation.
-// BEWARE: you still need to free the returned string with the string buffer's allocator after this
+// BEWARE: you still need to free the returned string with the stringbuffer's allocator after this
 // operation, otherwise memory will be leaked
 char *ext_sb_to_cstr(Ext_StringBuffer *sb);
 #ifndef EXTLIB_NO_STD
@@ -1018,7 +1017,7 @@ Ext_StringSlice ext_ss_trim_start(Ext_StringSlice ss);
 Ext_StringSlice ext_ss_trim_end(Ext_StringSlice ss);
 // Returns a new string slice with all white space removed from both ends
 Ext_StringSlice ext_ss_trim(Ext_StringSlice ss);
-// Returns a new string slice strating from `n` bytes into `ss`.
+// Returns a new string slice starting from `n` bytes into `ss`.
 Ext_StringSlice ext_ss_cut(Ext_StringSlice ss, size_t n);
 // Returns a new string slice of size `n`.
 Ext_StringSlice ext_ss_trunc(Ext_StringSlice ss, size_t n);
@@ -1078,17 +1077,17 @@ bool ext_delete_dir_recursively(const char *path);
 Ext_FileType ext_get_file_type(const char *path);
 // Renames a file (or directory)
 bool ext_rename_file(const char *old_path, const char *new_path);
-// Renames a file (or empty directory)
+// Deletes a file (or empty directory)
 bool ext_delete_file(const char *path);
 // Gets the current working directory using the current context allocator. Returns NULL on failure.
 char *ext_get_cwd(void);
-// Gets the current working directory using the provided allocator. Returns NULL on failure.
-char *ext_get_cwd_alloc(Ext_Allocator *a);
 // Gets the current working directory using the temporary allocator. Returns NULL on failure.
 char *ext_get_cwd_temp(void);
+// Gets the current working directory using the provided allocator. Returns NULL on failure.
+char *ext_get_cwd_alloc(Ext_Allocator *a);
 // Sets the current working directory
 bool ext_set_cwd(const char *cwd);
-// Transforsms `path` into an absolute path. Allocates using the provided allocator.
+// Transforms `path` into an absolute path. Allocates using the provided allocator.
 char *ext_get_abs_path_alloc(const char *path, Ext_Allocator *a);
 // Transforsms `path` into an absolute path. Allocates using the temp allocator.
 char *ext_get_abs_path_temp(const char *path);
