@@ -1865,7 +1865,7 @@ void *ext_temp_alloc(size_t size) {
 
 void *ext_temp_realloc(void *ptr, size_t old_size, size_t new_size) {
     ptrdiff_t alignment = EXT_ALIGN(old_size, EXT_DEFAULT_ALIGNMENT);
-    // Reallocating last allocated memory, can grow/shrink in-place
+    // Reallocating last allocated memory, can shrink page in-place
     if(ext_temp_allocator.start - old_size - alignment == ptr) {
         ext_temp_allocator.start -= old_size + alignment;
         return ext_temp_alloc(new_size);
@@ -2039,19 +2039,18 @@ void *ext_arena_realloc(Ext_Arena *a, void *ptr, size_t old_size, size_t new_siz
     Ext_Arena *arena = (Ext_Arena *)a;
     EXT_ASSERT(EXT_ALIGN(ptr, arena->alignment) == 0,
                "ptr is not aligned to the arena's alignment");
-
     Ext_ArenaPage *page = arena->last_page;
     EXT_ASSERT(page, "No pages in arena");
 
     size_t alignment = EXT_ALIGN(old_size, arena->alignment);
     if(page->start - old_size - alignment == ptr) {
-        // Reallocating last allocated memory, can grow/shrink in-place
+        // Reallocating last allocated memory, can grow/shrink page in-place
         page->start -= old_size + alignment;
         arena->allocated -= old_size + alignment;
         void *new_ptr = ext_arena_alloc(a, new_size);
-        if(new_ptr != ptr) {
-            memcpy(new_ptr, ptr, old_size);
-        }
+        // Can still get a different pointer in case the arena runs out of page space and needs to
+        // allocate a brand new one. In this case we fallback on copying the data over.
+        if(new_ptr != ptr) memcpy(new_ptr, ptr, old_size);
         return new_ptr;
     } else if(new_size > old_size) {
         void *new_ptr = ext_arena_alloc(a, new_size);
@@ -2068,15 +2067,14 @@ void ext_arena_free(Ext_Arena *a, void *ptr, size_t size) {
     Ext_Arena *arena = (Ext_Arena *)a;
     EXT_ASSERT(EXT_ALIGN(ptr, arena->alignment) == 0,
                "ptr is not aligned to the arena's alignment");
-
     Ext_ArenaPage *page = arena->last_page;
     EXT_ASSERT(page, "No pages in arena");
 
-    size_t alignment = EXT_ALIGN(size, arena->alignment);
-    if(page->start - size - alignment == ptr) {
+    size += EXT_ALIGN(size, arena->alignment);
+    if(page->start - size == ptr) {
         // Deallocating last allocated memory, can shrink in-place
-        page->start -= size + alignment;
-        arena->allocated -= size + alignment;
+        page->start -= size;
+        arena->allocated -= size;
         return;
     }
 
@@ -2084,7 +2082,7 @@ void ext_arena_free(Ext_Arena *a, void *ptr, size_t size) {
     if(arena->flags & EXT_ARENA_STACK_ALLOC) {
 #ifndef EXTLIB_NO_STD
         ext_log(EXT_ERROR, "Deallocating memory in non-LIFO order: got %p, expected %p", ptr,
-                (void *)(page->start - size - alignment));
+                (void *)(page->start - size));
         abort();
 #else
         EXT_ASSERT(false, "Deallocating memory in non-LIFO order");
