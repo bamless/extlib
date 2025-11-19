@@ -90,7 +90,7 @@
 
 #ifndef EXTLIB_NO_STD
 #include <assert.h>
-#include <errno.h>
+#include <errno.h> // IWYU pragma: export
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -376,7 +376,7 @@ Ext_Context *ext_pop_context(void);
 // PUSH_CONTEXT(&myctx) {
 //    // ... do stuff
 // }
-// // context automatically popped
+// // ... context automatically popped
 // ```
 #define EXT_PUSH_CONTEXT(ctx) \
     for(int i_ = (ext_push_context(ctx), 0); i_ != 1; (ext_pop_context(), i_ = 1))
@@ -389,11 +389,28 @@ Ext_Context *ext_pop_context(void);
 // PUSH_ALLOCATOR(&temp_allocator.base) {
 //    // ... do stuff
 // }
-// // context automatically popped
+// // ... context automatically popped
 // ```
 #define EXT_PUSH_ALLOCATOR(allocator)                                          \
     Ext_Context EXT_CONCAT_(ctx_, __LINE__) = *ext_context;                    \
     EXT_CONCAT_(ctx_, __LINE__).alloc = (allocator);                           \
+    for(int i_ = (ext_push_context(&EXT_CONCAT_(ctx_, __LINE__)), 0); i_ != 1; \
+        (ext_pop_context(), i_ = 1))
+
+// Utility macro to push/pop a context with the given logging level set.
+// Simplifies pushing when the only thing you want to customize is the logging level.
+//
+// USAGE:
+// ```c
+// LOGGING_LEVEL(EXT_NO_LOGGING) {
+//    // ... do stuff
+//    // ... nothing will log anymore between these
+// }
+// // ... context automatically popped
+// ```
+#define EXT_LOGGING_LEVEL(level)                                               \
+    Ext_Context EXT_CONCAT_(ctx_, __LINE__) = *ext_context;                    \
+    EXT_CONCAT_(ctx_, __LINE__).log_level = (level);                           \
     for(int i_ = (ext_push_context(&EXT_CONCAT_(ctx_, __LINE__)), 0); i_ != 1; \
         (ext_pop_context(), i_ = 1))
 
@@ -3118,18 +3135,19 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define ERROR      EXT_ERROR
 #define NO_LOGGING EXT_NO_LOGGING
 
-typedef Ext_Context Context;
+#define Context                Ext_Context
 #define PUSH_CONTEXT           EXT_PUSH_CONTEXT
 #define PUSH_ALLOCATOR         EXT_PUSH_ALLOCATOR
+#define LOGGING_LEVEL          EXT_LOGGING_LEVEL
 #define push_context_allocator ext_push_context_allocator
 #define push_context           ext_push_context
 #define pop_context            ext_pop_context
 
-typedef Ext_Allocator Allocator;
-typedef Ext_DefaultAllocator DefaultAllocator;
+#define Allocator         Ext_Allocator
+#define DefaultAllocator  Ext_DefaultAllocator
 #define default_allocator ext_default_allocator
 
-typedef Ext_TempAllocator TempAllocator;
+#define TempAllocator   Ext_TempAllocator
 #define temp_allocator  ext_temp_allocator
 #define temp_set_mem    ext_temp_set_mem
 #define temp_alloc      ext_temp_alloc
@@ -3145,24 +3163,24 @@ typedef Ext_TempAllocator TempAllocator;
 #define temp_vsprintf ext_temp_vsprintf
 #endif  // EXTLIB_NO_STD
 
-typedef Ext_ArenaFlags ArenaFlags;
+#define ArenaFlags          Ext_ArenaFlags
 #define ARENA_STACK_ALLOC   EXT_ARENA_STACK_ALLOC
 #define ARENA_ZERO_ALLOC    EXT_ARENA_ZERO_ALLOC
 #define ARENA_FLEXIBLE_PAGE EXT_ARENA_FLEXIBLE_PAGE
-typedef Ext_Arena Arena;
-typedef Ext_ArenaPage ArenaPage;
-typedef Ext_ArenaCheckpoint ArenaCheckpoint;
-#define new_arena        ext_new_arena
-#define arena_init       ext_arena_init
-#define arena_alloc      ext_arena_alloc
-#define arena_realloc    ext_arena_realloc
-#define arena_free       ext_arena_free
-#define arena_checkpoint ext_arena_checkpoint
-#define arena_rewind     ext_arena_rewind
-#define arena_reset      ext_arena_reset
-#define arena_destroy    ext_arena_destroy
-#define arena_strdup     ext_arena_strdup
-#define arena_memdup     ext_arena_memdup
+#define Arena               Ext_Arena
+#define ArenaPage           Ext_ArenaPage
+#define ArenaCheckpoint     Ext_ArenaCheckpoint
+#define new_arena           ext_new_arena
+#define arena_init          ext_arena_init
+#define arena_alloc         ext_arena_alloc
+#define arena_realloc       ext_arena_realloc
+#define arena_free          ext_arena_free
+#define arena_checkpoint    ext_arena_checkpoint
+#define arena_rewind        ext_arena_rewind
+#define arena_reset         ext_arena_reset
+#define arena_destroy       ext_arena_destroy
+#define arena_strdup        ext_arena_strdup
+#define arena_memdup        ext_arena_memdup
 #ifndef EXTLIB_NO_STD
 #define arena_sprintf  ext_arena_sprintf
 #define arena_vsprintf ext_arena_vsprintf
@@ -3181,7 +3199,7 @@ typedef Ext_ArenaCheckpoint ArenaCheckpoint;
 #define array_resize        ext_array_resize
 #define array_shrink_to_fit ext_array_shrink_to_fit
 
-typedef Ext_StringBuffer StringBuffer;
+#define StringBuffer     Ext_StringBuffer
 #define SB_Fmt           Ext_SB_Fmt
 #define SB_Arg           Ext_SB_Arg
 #define sb_free          ext_sb_free
@@ -3200,7 +3218,7 @@ typedef Ext_StringBuffer StringBuffer;
 #define sb_appendvf ext_sb_appendvf
 #endif  // EXTLIB_NO_STD
 
-typedef Ext_StringSlice StringSlice;
+#define StringSlice         Ext_StringSlice
 #define SS_Fmt              Ext_SS_Fmt
 #define SS_Arg              Ext_SS_Arg
 #define SS                  Ext_SS
@@ -3230,9 +3248,9 @@ typedef Ext_StringSlice StringSlice;
 #define ss_to_cstr_alloc    ext_ss_to_cstr_alloc
 
 #ifndef EXTLIB_NO_STD
-typedef Ext_Paths Paths;
-#define free_paths ext_free_paths
-typedef Ext_FileType FileType;
+#define Ext_Paths              Paths
+#define free_paths             ext_free_paths
+#define FileType               Ext_FileType
 #define FILE_ERR               EXT_FILE_ERR
 #define FILE_REGULAR           EXT_FILE_REGULAR
 #define FILE_DIR               EXT_FILE_DIR

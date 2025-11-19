@@ -39,16 +39,15 @@ Allocator tracking_allocator = {
 };
 
 int main(int argc, const char** argv) {
-    Context ctx = *ext_context;
-    ctx.alloc = &tracking_allocator;
-    push_context(&ctx);
-    int ret = ctest_main(argc, argv);
+    int res;
+    PUSH_ALLOCATOR(&tracking_allocator) {
+        res = ctest_main(argc, argv);
+    }
     if(allocated != 0) {
         fprintf(stderr, "\n%s:%d: error: got un-freed data: %zu\n", __FILE__, __LINE__, allocated);
         return 1;
     }
-    pop_context();
-    return ret;
+    return res;
 }
 
 typedef struct {
@@ -1341,18 +1340,14 @@ CTEST(io, read_line) {
 }
 
 CTEST(io, get_file_type) {
-    Context ctx = *ext_context;
-    ctx.log_level = NO_LOGGING;
-    push_context(&ctx);
-
-    FileType t = get_file_type("doesnotexist");
-    ASSERT_TRUE(t == FILE_ERR);
-    t = get_file_type("extlib.h");
-    ASSERT_TRUE(t == FILE_REGULAR);
-    t = get_file_type("test");
-    ASSERT_TRUE(t == FILE_DIR);
-
-    pop_context();
+    LOGGING_LEVEL(NO_LOGGING) {
+        FileType t = get_file_type("doesnotexist");
+        ASSERT_TRUE(t == FILE_ERR);
+        t = get_file_type("extlib.h");
+        ASSERT_TRUE(t == FILE_REGULAR);
+        t = get_file_type("test");
+        ASSERT_TRUE(t == FILE_DIR);
+    }
 }
 
 CTEST(io, get_cwd) {
