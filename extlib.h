@@ -3248,7 +3248,7 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define ss_to_cstr_alloc    ext_ss_to_cstr_alloc
 
 #ifndef EXTLIB_NO_STD
-#define Ext_Paths              Paths
+#define Paths                  Ext_Paths
 #define free_paths             ext_free_paths
 #define FileType               Ext_FileType
 #define FILE_ERR               EXT_FILE_ERR
