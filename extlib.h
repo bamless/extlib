@@ -1,5 +1,5 @@
 /**
- * extlib v1.0.1 - c extended library
+ * extlib v1.0.2 - c extended library
  *
  * Single-header-file library that provides functionality that extends the standard c library.
  * Features:
@@ -43,7 +43,7 @@
  *
  *  Changelog:
  *
- *  v1.0.1:
+ *  v1.0.2:
  *      - Added `DEFER_LOOP` macro
  */
 #ifndef EXTLIB_H
