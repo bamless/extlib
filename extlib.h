@@ -1,5 +1,5 @@
 /**
- * extlib v1.0.0 - c extended library
+ * extlib v1.0.1 - c extended library
  *
  * Single-header-file library that provides functionality that extends the standard c library.
  * Features:
@@ -40,6 +40,11 @@
  *      SECTION: String buffer
  *      SECTION: String slice
  *      SECTION: IO
+ *
+ *  Changelog:
+ *
+ *  v1.0.1:
+ *      - Added `DEFER_LOOP` macro
  */
 #ifndef EXTLIB_H
 #define EXTLIB_H
@@ -286,6 +291,23 @@ void assert(int c);  // TODO: are we sure we want to require wasm embedder to pr
 #define EXT_PRINTF_FORMAT(a, b)
 #endif  // __GNUC__
 
+// Executes `start` expression at the start of the scope, and `end` expressions when it ends.
+//
+// It is implemented by exploiting how a `for` loop has an inizialization and an increment
+// expression that run at the start and at the end of the loop, respectiverly.
+// NOTE: care must be taken when returning early or breaking inside of the loop, because in that
+// case the `end` expression will *not* be executed
+//
+// USAGE:
+// ```c
+// void* mem = ext_alloc(...);
+// DEFER_LOOP((void)0, ext_free(mem)) {
+//     // use mem, it will be freed at the end of the scope
+// }
+// ```
+#define EXT_DEFER_LOOP(begin, end) \
+    for(int i__ = ((begin), 0); i__ != 1; i__ = ((end), 1))
+
 // Assigns passed in value to variable, and jumps to label.
 //
 // USAGE:
@@ -379,7 +401,7 @@ Ext_Context *ext_pop_context(void);
 // // ... context automatically popped
 // ```
 #define EXT_PUSH_CONTEXT(ctx) \
-    for(int i_ = (ext_push_context(ctx), 0); i_ != 1; (ext_pop_context(), i_ = 1))
+    EXT_DEFER_LOOP(ext_push_context(ctx), ext_pop_context())
 
 // Utility macro to push/pop context with an allocator between code.
 // Simplifies pushing when the only thing you want to customize is the allocator.
@@ -394,8 +416,7 @@ Ext_Context *ext_pop_context(void);
 #define EXT_PUSH_ALLOCATOR(allocator)                                          \
     Ext_Context EXT_CONCAT_(ctx_, __LINE__) = *ext_context;                    \
     EXT_CONCAT_(ctx_, __LINE__).alloc = (allocator);                           \
-    for(int i_ = (ext_push_context(&EXT_CONCAT_(ctx_, __LINE__)), 0); i_ != 1; \
-        (ext_pop_context(), i_ = 1))
+    EXT_DEFER_LOOP(ext_push_context(&EXT_CONCAT_(ctx_, __LINE__)), ext_pop_context())
 
 // Utility macro to push/pop a context with the given logging level set.
 // Simplifies pushing when the only thing you want to customize is the logging level.
@@ -411,8 +432,7 @@ Ext_Context *ext_pop_context(void);
 #define EXT_LOGGING_LEVEL(level)                                               \
     Ext_Context EXT_CONCAT_(ctx_, __LINE__) = *ext_context;                    \
     EXT_CONCAT_(ctx_, __LINE__).log_level = (level);                           \
-    for(int i_ = (ext_push_context(&EXT_CONCAT_(ctx_, __LINE__)), 0); i_ != 1; \
-        (ext_pop_context(), i_ = 1))
+    EXT_DEFER_LOOP(ext_push_context(&EXT_CONCAT_(ctx_, __LINE__)), ext_pop_context())
 
 // -----------------------------------------------------------------------------
 // SECTION: Allocators
@@ -3128,6 +3148,7 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define ALIGN         EXT_ALIGN
 #define ARR_SIZE      EXT_ARR_SIZE
 #define PRINTF_FORMAT EXT_PRINTF_FORMAT
+#define DEFER_LOOP    EXT_DEFER_LOOP
 #define return_exit   ext_return_exit
 
 #define INFO       EXT_INFO

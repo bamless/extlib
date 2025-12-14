@@ -216,9 +216,7 @@ NoopAlloc noop_allocator = {{noop_alloc, noop_realloc, noop_free}, true};
 CTEST(context, push_pop) {
     Context ctx = *ext_context;
     ctx.alloc = &noop_allocator.base;
-
-    push_context(&ctx);
-    {
+    PUSH_CONTEXT(&ctx) {
         ASSERT_TRUE(ext_context == &ctx);
         ASSERT_TRUE(ext_context->alloc->alloc == noop_alloc);
         ASSERT_TRUE(ext_context->prev->alloc == &tracking_allocator);
@@ -228,7 +226,6 @@ CTEST(context, push_pop) {
         ASSERT_TRUE(ptr == (void*)2);
         ext_free(ptr, sizeof(int) * 20);
     }
-    pop_context();
     ASSERT_TRUE(ext_context != &ctx);
     ASSERT_TRUE(ext_context->alloc == &tracking_allocator);
 }
@@ -553,21 +550,17 @@ CTEST(array, allocator) {
 }
 
 CTEST(array, ctx_allocator) {
-    Context ctx = *ext_context;
-    ctx.alloc = &temp_allocator.base;
-    push_context(&ctx);
-
-    Ints ints = {0};
-    size_t temp_avail = temp_allocator.end - temp_allocator.start;
-    ASSERT_TRUE(temp_allocator.mem_size - temp_avail == 0);
-    for(int i = 0; i < 100; i++) {
-        array_push(&ints, i);
+    PUSH_ALLOCATOR(&temp_allocator.base) {
+        Ints ints = {0};
+        size_t temp_avail = temp_allocator.end - temp_allocator.start;
+        ASSERT_TRUE(temp_allocator.mem_size - temp_avail == 0);
+        for(int i = 0; i < 100; i++) {
+            array_push(&ints, i);
+        }
+        temp_avail = temp_allocator.end - temp_allocator.start;
+        ASSERT_TRUE(temp_allocator.mem_size - temp_avail >= 100 * sizeof(int));
+        ASSERT_TRUE(allocated == 0);
     }
-    temp_avail = temp_allocator.end - temp_allocator.start;
-    ASSERT_TRUE(temp_allocator.mem_size - temp_avail >= 100 * sizeof(int));
-    ASSERT_TRUE(allocated == 0);
-
-    pop_context();
     temp_reset();
 }
 
@@ -1225,6 +1218,15 @@ CTEST(hmap, delete_ss) {
     temp_reset();
 }
 
+CTEST(defer, loop) {
+    char* str = ext_strdup("hello, world");
+    DEFER_LOOP((void)0, ext_free(str, 13)) {
+        str[0] = 'H';
+        str[7] = 'W';
+        ASSERT_TRUE(strcmp(str, "Hello, World") == 0);
+    }
+}
+
 static void sb_log(Ext_LogLevel lvl, void* data, const char* fmt, va_list ap) {
     StringBuffer* sb = (StringBuffer*)data;
     switch(lvl) {
@@ -1358,11 +1360,13 @@ CTEST(io, get_cwd) {
 
 CTEST(io, fs_operations) {
     char cantami[] = "Cantami, o Diva, del Pelide Achille";
-    ASSERT_TRUE(write_file("./test/a.txt", cantami, sizeof(cantami) - 1));
-    ASSERT_TRUE(rename_file("./test/a.txt", "./test/b.txt"));
-    ASSERT_TRUE(delete_file("./test/b.txt"));
-    ASSERT_TRUE(create_dir("./test/test2"));
-    ASSERT_TRUE(write_file("./test/test2/cose.txt", "abc", 3));
-    ASSERT_TRUE(rename_file("./test/test2", "./test/test3"));
-    ASSERT_TRUE(delete_dir_recursively("./test/test3"));
+    LOGGING_LEVEL(NO_LOGGING) {
+        ASSERT_TRUE(write_file("./test/a.txt", cantami, sizeof(cantami) - 1));
+        ASSERT_TRUE(rename_file("./test/a.txt", "./test/b.txt"));
+        ASSERT_TRUE(delete_file("./test/b.txt"));
+        ASSERT_TRUE(create_dir("./test/test2"));
+        ASSERT_TRUE(write_file("./test/test2/cose.txt", "abc", 3));
+        ASSERT_TRUE(rename_file("./test/test2", "./test/test3"));
+        ASSERT_TRUE(delete_dir_recursively("./test/test3"));
+    }
 }
