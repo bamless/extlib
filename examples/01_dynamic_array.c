@@ -12,34 +12,36 @@
 #include "../extlib.h"
 
 typedef struct {
-    char** items;
+    StringSlice* items;
     size_t size, capacity;
     Allocator* allocator;
 } Lines;
 
-static int qsort_strcmp(const void* a, const void* b) {
-    return strcmp(*(const char**)a, *(const char**)b);
+static int qsort_cmp(const void* a, const void* b) {
+    return ss_cmp(ss_trim(*(StringSlice*)a), ss_trim(*(StringSlice*)b));
 }
 
 int main(void) {
     Lines lines = {0};
-    StringBuffer line = {0};
+    StringBuffer file = {0};
 
     int res;
-    while((res = read_line(stdin, &line)) > 0) {
-        array_push(&lines, sb_to_cstr(&line));
-    }
+    while((res = read_line(stdin, &file)) > 0);
     if(res < 0) return 1;
 
-    qsort(lines.items, lines.size, sizeof(*lines.items), qsort_strcmp);
-    array_foreach(char*, it, &lines) {
-        printf("%s", *it);
+    StringSlice ss = sb_to_ss(file);
+    while(ss.size > 0) {
+        StringSlice line = ss_split_once(&ss, '\n');
+        if(ss_trim(line).size == 0) continue;
+        ext_array_push(&lines, line);
     }
 
-    sb_free(&line);
-    array_foreach(char*, it, &lines) {
-        ext_free(*it, strlen(*it) + 1);
+    qsort(lines.items, lines.size, sizeof(*lines.items), qsort_cmp);
+    array_foreach(StringSlice, line, &lines) {
+        printf(SS_Fmt"\n", SS_Arg(*line));
     }
+
     array_free(&lines);
+    sb_free(&file);
     return 0;
 }

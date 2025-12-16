@@ -1,5 +1,5 @@
 /**
- * extlib v1.0.2 - c extended library
+ * extlib v1.1.0 - c extended library
  *
  * Single-header-file library that provides functionality that extends the standard c library.
  * Features:
@@ -42,6 +42,12 @@
  *      SECTION: IO
  *
  *  Changelog:
+ *
+ *  v1.1.0:
+ *      - Added generic allocator versions of convenience macros: `ext_allocator_new`,
+ *        `ext_allocator_new_array`, `ext_allocator_delete`, `ext_allocator_delete_array`,
+ *        and `ext_allocator_clone` (with corresponding shorthands when EXTLIB_NO_SHORTHANDS
+ *        is not defined)
  *
  *  v1.0.2:
  *      - Added `DEFER_LOOP` macro
@@ -95,7 +101,7 @@
 
 #ifndef EXTLIB_NO_STD
 #include <assert.h>
-#include <errno.h> // IWYU pragma: export
+#include <errno.h>  // IWYU pragma: export
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -305,8 +311,7 @@ void assert(int c);  // TODO: are we sure we want to require wasm embedder to pr
 //     // use mem, it will be freed at the end of the scope
 // }
 // ```
-#define EXT_DEFER_LOOP(begin, end) \
-    for(int i__ = ((begin), 0); i__ != 1; i__ = ((end), 1))
+#define EXT_DEFER_LOOP(begin, end) for(int i__ = ((begin), 0); i__ != 1; i__ = ((end), 1))
 
 // Assigns passed in value to variable, and jumps to label.
 //
@@ -400,8 +405,7 @@ Ext_Context *ext_pop_context(void);
 // }
 // // ... context automatically popped
 // ```
-#define EXT_PUSH_CONTEXT(ctx) \
-    EXT_DEFER_LOOP(ext_push_context(ctx), ext_pop_context())
+#define EXT_PUSH_CONTEXT(ctx) EXT_DEFER_LOOP(ext_push_context(ctx), ext_pop_context())
 
 // Utility macro to push/pop context with an allocator between code.
 // Simplifies pushing when the only thing you want to customize is the allocator.
@@ -413,9 +417,9 @@ Ext_Context *ext_pop_context(void);
 // }
 // // ... context automatically popped
 // ```
-#define EXT_PUSH_ALLOCATOR(allocator)                                          \
-    Ext_Context EXT_CONCAT_(ctx_, __LINE__) = *ext_context;                    \
-    EXT_CONCAT_(ctx_, __LINE__).alloc = (allocator);                           \
+#define EXT_PUSH_ALLOCATOR(allocator)                       \
+    Ext_Context EXT_CONCAT_(ctx_, __LINE__) = *ext_context; \
+    EXT_CONCAT_(ctx_, __LINE__).alloc = (allocator);        \
     EXT_DEFER_LOOP(ext_push_context(&EXT_CONCAT_(ctx_, __LINE__)), ext_pop_context())
 
 // Utility macro to push/pop a context with the given logging level set.
@@ -429,9 +433,9 @@ Ext_Context *ext_pop_context(void);
 // }
 // // ... context automatically popped
 // ```
-#define EXT_LOGGING_LEVEL(level)                                               \
-    Ext_Context EXT_CONCAT_(ctx_, __LINE__) = *ext_context;                    \
-    EXT_CONCAT_(ctx_, __LINE__).log_level = (level);                           \
+#define EXT_LOGGING_LEVEL(level)                            \
+    Ext_Context EXT_CONCAT_(ctx_, __LINE__) = *ext_context; \
+    EXT_CONCAT_(ctx_, __LINE__).log_level = (level);        \
     EXT_DEFER_LOOP(ext_push_context(&EXT_CONCAT_(ctx_, __LINE__)), ext_pop_context())
 
 // -----------------------------------------------------------------------------
@@ -497,23 +501,52 @@ typedef struct Ext_Allocator {
 #define ext_delete(T, ptr)              ext_free(ptr, sizeof(T))
 #define ext_delete_array(T, count, ptr) ext_free(ptr, sizeof(T) * count);
 #define ext_clone(T, ptr)               ext_memdup(ptr, sizeof(T));
+// Similar to above, but work with any Ext_Allocator
+#define ext_allocator_new(a, T)                      ext_allocator_alloc(a, sizeof(T))
+#define ext_allocator_new_array(a, T, count)         ext_allocator_alloc(a, sizeof(T) * count)
+#define ext_allocator_delete(a, T, ptr)              ext_allocator_free(a, ptr, sizeof(T))
+#define ext_allocator_delete_array(a, T, count, ptr) ext_allocator_free(a, ptr, sizeof(T) * count)
+#define ext_allocator_clone(a, T, ptr)               ext_allocator_memdup(a, ptr, sizeof(T))
+
+// Generic allocator functions - work with any Ext_Allocator
+inline void *ext_allocator_alloc(Ext_Allocator *a, size_t size) {
+    return a->alloc(a, size);
+}
+inline void *ext_allocator_realloc(Ext_Allocator *a, void *ptr, size_t old_sz, size_t new_sz) {
+    return a->realloc(a, ptr, old_sz, new_sz);
+}
+inline void ext_allocator_free(Ext_Allocator *a, void *ptr, size_t size) {
+    a->free(a, ptr, size);
+}
+char *ext_allocator_strdup(Ext_Allocator *a, const char *s);
+void *ext_allocator_memdup(Ext_Allocator *a, const void *mem, size_t size);
+// Backward compatibility: old _alloc suffix functions now use ext_allocator_* internally
+// Note: parameter order changed - allocator is now first parameter
+// DEPRECATED: Use ext_allocator_strdup and ext_allocator_memdup instead
+#define ext_strdup_alloc(s, a)         ext_allocator_strdup(a, s)
+#define ext_memdup_alloc(mem, size, a) ext_allocator_memdup(a, mem, size)
 
 // Allocation functions that use the current configured context to allocate, reallocate and free
 // memory.
 // It is reccomended to always use these functions instead of malloc/realloc/free when you need
 // memory to make the behaviour of your code configurable via the context.
-void *ext_alloc(size_t size);
-void *ext_realloc(void *ptr, size_t old_sz, size_t new_sz);
-void ext_free(void *ptr, size_t size);
-
+inline void *ext_alloc(size_t size) {
+    return ext_allocator_alloc(ext_context->alloc, size);
+}
+inline void *ext_realloc(void *ptr, size_t old_sz, size_t new_sz) {
+    return ext_allocator_realloc(ext_context->alloc, ptr, old_sz, new_sz);
+}
+inline void ext_free(void *ptr, size_t size) {
+    return ext_allocator_free(ext_context->alloc, ptr, size);
+}
 // Copies a cstring by using the current context allocator
-char *ext_strdup(const char *s);
+inline char *ext_strdup(const char *s) {
+    return ext_allocator_strdup(ext_context->alloc, s);
+}
 // Copies a memory region of `size` bytes by using the current context allocator
-void *ext_memdup(const void *mem, size_t size);
-// Copies a cstring by using the provided allocator
-char *ext_strdup_alloc(const char *s, Ext_Allocator *a);
-// Copies a memory region of `size` bytes by using the provided allocator
-void *ext_memdup_alloc(const void *mem, size_t size, Ext_Allocator *a);
+inline void *ext_memdup(const void *mem, size_t size) {
+    return ext_allocator_memdup(ext_context->alloc, mem, size);
+}
 
 // A default allocator that uses malloc/realloc/free.
 // It is the allocator configured in the context at program start.
@@ -528,9 +561,8 @@ extern Ext_DefaultAllocator ext_default_allocator;
 
 // The temporary allocator supports creating temporary dynamic allocations, usually short lived.
 // By default, it uses a predefined amount of `static` memory to allocate (see
-// `EXT_DEFAULT_TEMP_SIZE`) and never frees memory.
-// You should instead either `temp_reset` or `temp_rewind` at appropriate points of your program
-// to avoid running out of temp memory.
+// `EXT_DEFAULT_TEMP_SIZE`) and never frees memory. You should instead either `temp_reset` or
+// `temp_rewind` at appropriate points of your program to avoid running out of temp memory.
 // If the temp allocator runs out of memory, it will `abort` the program with an error message.
 //
 // NOTE
@@ -773,43 +805,43 @@ char *ext_arena_vsprintf(Ext_Arena *a, const char *fmt, va_list ap);
 // Reserves at least `requested_cap` elements in the dynamic array, growing the backing array if
 // necessary. `requested_cap` is treated as an absolute value, so if you want to take the current
 // size into account you'll have to do it yourself: `array_reserve(&a, a.size + new_cap)`.
-#define ext_array_reserve(arr, requested_cap)                                              \
-    do {                                                                                   \
-        if((arr)->capacity < (requested_cap)) {                                            \
-            size_t oldcap_ = (arr)->capacity;                                              \
-            size_t newcap_ = (arr)->capacity ? (arr)->capacity * 2 : EXT_ARRAY_INIT_CAP;   \
-            while(newcap_ < (requested_cap)) newcap_ *= 2;                                 \
-            if(!((arr)->allocator)) (arr)->allocator = ext_context->alloc;                 \
-            if(!(arr)->items) {                                                            \
-                (arr)->items = (arr)->allocator->alloc((arr)->allocator,                   \
-                                                       newcap_ * sizeof(*(arr)->items));   \
-            } else {                                                                       \
-                (arr)->items = (arr)->allocator->realloc((arr)->allocator, (arr)->items,   \
-                                                         oldcap_ * sizeof(*(arr)->items),  \
-                                                         newcap_ * sizeof(*(arr)->items)); \
-            }                                                                              \
-            (arr)->capacity = newcap_;                                                     \
-        }                                                                                  \
+#define ext_array_reserve(arr, requested_cap)                                           \
+    do {                                                                                \
+        if((arr)->capacity < (requested_cap)) {                                         \
+            size_t oldcap = (arr)->capacity;                                            \
+            size_t newcap = (arr)->capacity ? (arr)->capacity * 2 : EXT_ARRAY_INIT_CAP; \
+            while(newcap < (requested_cap)) newcap *= 2;                                \
+            if(!((arr)->allocator)) (arr)->allocator = (void *)ext_context->alloc;      \
+            Ext_Allocator *a = (Ext_Allocator *)(arr)->allocator;                       \
+            if(!(arr)->items) {                                                         \
+                (arr)->items = ext_allocator_alloc(a, newcap * sizeof(*(arr)->items));  \
+            } else {                                                                    \
+                (arr)->items = ext_allocator_realloc(a, (arr)->items,                   \
+                                                     oldcap * sizeof(*(arr)->items),    \
+                                                     newcap * sizeof(*(arr)->items));   \
+            }                                                                           \
+            (arr)->capacity = newcap;                                                   \
+        }                                                                               \
     } while(0)
 
 // Reserves at exactly `requested_cap` elements in the dynamic array, growing the backing array
 // if necessary. `requested_cap` is treated as an absolute value.
-#define ext_array_reserve_exact(arr, requested_cap)                                        \
-    do {                                                                                   \
-        if((arr)->capacity < (requested_cap)) {                                            \
-            size_t oldcap_ = (arr)->capacity;                                              \
-            size_t newcap_ = (requested_cap);                                              \
-            if(!((arr)->allocator)) (arr)->allocator = ext_context->alloc;                 \
-            if(!(arr)->items) {                                                            \
-                (arr)->items = (arr)->allocator->alloc((arr)->allocator,                   \
-                                                       newcap_ * sizeof(*(arr)->items));   \
-            } else {                                                                       \
-                (arr)->items = (arr)->allocator->realloc((arr)->allocator, (arr)->items,   \
-                                                         oldcap_ * sizeof(*(arr)->items),  \
-                                                         newcap_ * sizeof(*(arr)->items)); \
-            }                                                                              \
-            (arr)->capacity = newcap_;                                                     \
-        }                                                                                  \
+#define ext_array_reserve_exact(arr, requested_cap)                                    \
+    do {                                                                               \
+        if((arr)->capacity < (requested_cap)) {                                        \
+            size_t oldcap = (arr)->capacity;                                           \
+            size_t newcap = (requested_cap);                                           \
+            if(!((arr)->allocator)) (arr)->allocator = (void *)ext_context->alloc;     \
+            Ext_Allocator *a = (Ext_Allocator *)(arr)->allocator;                      \
+            if(!(arr)->items) {                                                        \
+                (arr)->items = ext_allocator_alloc(a, newcap * sizeof(*(arr)->items)); \
+            } else {                                                                   \
+                (arr)->items = ext_allocator_realloc(a, (arr)->items,                  \
+                                                     oldcap * sizeof(*(arr)->items),   \
+                                                     newcap * sizeof(*(arr)->items));  \
+            }                                                                          \
+            (arr)->capacity = newcap;                                                  \
+        }                                                                              \
     } while(0)
 
 // Appends a new element in the array, growing if necessary
@@ -820,12 +852,13 @@ char *ext_arena_vsprintf(Ext_Arena *a, const char *fmt, va_list ap);
     } while(0)
 
 // Frees the dynamic array
-#define ext_array_free(a)                                                                          \
-    do {                                                                                           \
-        if((a)->allocator) {                                                                       \
-            (a)->allocator->free((a)->allocator, (a)->items, (a)->capacity * sizeof(*(a)->items)); \
-        }                                                                                          \
-        memset((a), 0, sizeof(*(a)));                                                              \
+#define ext_array_free(a)                                                   \
+    do {                                                                    \
+        if((a)->allocator) {                                                \
+            ext_allocator_free((Ext_Allocator *)(a)->allocator, (a)->items, \
+                               (a)->capacity * sizeof(*(a)->items));        \
+        }                                                                   \
+        memset((a), 0, sizeof(*(a)));                                       \
     } while(0)
 
 // Appends all `count` elements into the dynamic array
@@ -1200,7 +1233,7 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
     do {                                                                                         \
         if((hmap)->size >= EXT_HMAP_MAX_ENTRY_LOAD((hmap)->capacity + 1)) {                      \
             ext_hmap_grow_((void **)&(hmap)->entries, sizeof(*(hmap)->entries), &(hmap)->hashes, \
-                           &(hmap)->capacity, &(hmap)->allocator);                               \
+                           &(hmap)->capacity, (Ext_Allocator **)&(hmap)->allocator);             \
             ext_hmap_tombs_(hmap) = (hmap)->size;                                                \
         }                                                                                        \
         ext_hmap_tmp_(hmap).key = (entry_key);                                                   \
@@ -1257,7 +1290,7 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
     do {                                                                                         \
         if((hmap)->size >= EXT_HMAP_MAX_ENTRY_LOAD((hmap)->capacity + 1)) {                      \
             ext_hmap_grow_((void **)&(hmap)->entries, sizeof(*(hmap)->entries), &(hmap)->hashes, \
-                           &(hmap)->capacity, &(hmap)->allocator);                               \
+                           &(hmap)->capacity, (Ext_Allocator **)&(hmap)->allocator);             \
             ext_hmap_tombs_(hmap) = (hmap)->size;                                                \
         }                                                                                        \
         ext_hmap_tmp_(hmap).key = (entry_key);                                                   \
@@ -1346,15 +1379,15 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
     } while(0)
 
 // Frees and clears the hashmap
-#define ext_hmap_free(hmap)                                                               \
-    do {                                                                                  \
-        if((hmap)->entries) {                                                             \
-            size_t sz = ((hmap)->capacity + 2) * sizeof(*(hmap)->entries);                \
-            size_t pad = EXT_ALIGN(sz, sizeof(*(hmap)->hashes));                          \
-            size_t totalsz = sz + pad + sizeof(*(hmap)->hashes) * ((hmap)->capacity + 2); \
-            (hmap)->allocator->free((hmap)->allocator, (hmap)->entries, totalsz);         \
-        }                                                                                 \
-        memset((hmap), 0, sizeof(*(hmap)));                                               \
+#define ext_hmap_free(hmap)                                                                   \
+    do {                                                                                      \
+        if((hmap)->entries) {                                                                 \
+            size_t sz = ((hmap)->capacity + 2) * sizeof(*(hmap)->entries);                    \
+            size_t pad = EXT_ALIGN(sz, sizeof(*(hmap)->hashes));                              \
+            size_t totalsz = sz + pad + sizeof(*(hmap)->hashes) * ((hmap)->capacity + 2);     \
+            ext_allocator_free((Ext_Allocator *)(hmap)->allocator, (hmap)->entries, totalsz); \
+        }                                                                                     \
+        memset((hmap), 0, sizeof(*(hmap)));                                                   \
     } while(0)
 
 // Iterate all entries in the hashmap
@@ -1737,27 +1770,19 @@ Ext_Context *ext_pop_context(void) {
 // SECTION: Allocators
 //
 
-void *ext_alloc(size_t size) {
-    return ext_context->alloc->alloc(ext_context->alloc, size);
-}
+extern inline void *ext_allocator_alloc(Ext_Allocator *a, size_t size);
+extern inline void *ext_allocator_realloc(Ext_Allocator *a, void *ptr, size_t old_sz,
+                                          size_t new_sz);
+extern inline void ext_allocator_free(Ext_Allocator *a, void *ptr, size_t size);
 
-void *ext_realloc(void *ptr, size_t old_sz, size_t new_sz) {
-    return ext_context->alloc->realloc(ext_context->alloc, ptr, old_sz, new_sz);
-}
+extern inline void *ext_alloc(size_t size);
+extern inline void *ext_realloc(void *ptr, size_t old_sz, size_t new_sz);
+extern inline void ext_free(void *ptr, size_t size);
 
-void ext_free(void *ptr, size_t size) {
-    ext_context->alloc->free(ext_context->alloc, ptr, size);
-}
+extern inline char *ext_strdup(const char *s);
+extern inline void *ext_memdup(const void *mem, size_t size);
 
-char *ext_strdup(const char *s) {
-    return ext_strdup_alloc(s, ext_context->alloc);
-}
-
-void *ext_memdup(const void *mem, size_t size) {
-    return ext_memdup_alloc(mem, size, ext_context->alloc);
-}
-
-char *ext_strdup_alloc(const char *s, Ext_Allocator *a) {
+char *ext_allocator_strdup(Ext_Allocator *a, const char *s) {
     size_t len = strlen(s);
     char *res = a->alloc(a, len + 1);
     memcpy(res, s, len);
@@ -1765,7 +1790,7 @@ char *ext_strdup_alloc(const char *s, Ext_Allocator *a) {
     return res;
 }
 
-void *ext_memdup_alloc(const void *mem, size_t size, Ext_Allocator *a) {
+void *ext_allocator_memdup(Ext_Allocator *a, const void *mem, size_t size) {
     return memcpy(a->alloc(a, size), mem, size);
 }
 
@@ -1933,11 +1958,11 @@ void ext_temp_rewind(void *checkpoint) {
 }
 
 char *ext_temp_strdup(const char *s) {
-    return ext_strdup_alloc(s, &ext_temp_allocator.base);
+    return ext_allocator_strdup(&ext_temp_allocator.base, s);
 }
 
 void *ext_temp_memdup(void *mem, size_t size) {
-    return ext_memdup_alloc(mem, size, &ext_temp_allocator.base);
+    return ext_allocator_memdup(&ext_temp_allocator.base, mem, size);
 }
 
 #ifndef EXTLIB_NO_STD
@@ -2178,11 +2203,11 @@ void ext_arena_destroy(Ext_Arena *a) {
 }
 
 char *ext_arena_strdup(Ext_Arena *a, const char *str) {
-    return ext_strdup_alloc(str, &a->base);
+    return ext_allocator_strdup(&a->base, str);
 }
 
 void *ext_arena_memdup(Ext_Arena *a, const void *mem, size_t size) {
-    return ext_memdup_alloc(mem, size, &a->base);
+    return ext_allocator_memdup(&a->base, mem, size);
 }
 
 #ifndef EXTLIB_NO_STD
@@ -2617,7 +2642,7 @@ bool ext_read_dir(const char *path, Ext_Paths *paths) {
 
     do {
         if(strcmp(".", find_data.cFileName) != 0 && strcmp("..", find_data.cFileName) != 0) {
-            ext_array_push(paths, ext_strdup_alloc(find_data.cFileName, a));
+            ext_array_push(paths, ext_allocator_strdup(a, find_data.cFileName));
         }
     } while(FindNextFile(dir_handle, &find_data) != 0);
 
@@ -2640,7 +2665,7 @@ exit:
         struct dirent *entry = readdir(dir);
         if(!entry) ext_return_exit(errno ? false : true);
         if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
-        ext_array_push(paths, ext_strdup_alloc(entry->d_name, a));
+        ext_array_push(paths, ext_allocator_strdup(a, entry->d_name));
     }
 
 exit:
@@ -2957,7 +2982,7 @@ void ext_hmap_grow_(void **entries, size_t entries_sz, size_t **hashes, size_t *
     size_t pad = EXT_ALIGN(newsz, sizeof(size_t));
     size_t totalsz = newsz + pad + sizeof(size_t) * (newcap + 1);
     if(!*a) *a = ext_context->alloc;
-    void *newentries = (*a)->alloc(*a, totalsz);
+    void *newentries = ext_allocator_alloc(*a, totalsz);
     size_t *newhashes = (size_t *)((char *)newentries + newsz + pad);
     EXT_ASSERT(((uintptr_t)newhashes & (sizeof(size_t) - 1)) == 0,
                "newhashes allocation is not aligned");
@@ -2980,7 +3005,7 @@ void ext_hmap_grow_(void **entries, size_t entries_sz, size_t **hashes, size_t *
         size_t sz = (*cap + 2) * entries_sz;
         size_t pad = EXT_ALIGN(sz, sizeof(size_t));
         size_t totalsz = sz + pad + sizeof(size_t) * (*cap + 2);
-        (*a)->free(*a, *entries, totalsz);
+        ext_allocator_free(*a, *entries, totalsz);
     }
     *entries = newentries;
     *hashes = newhashes;
@@ -3164,9 +3189,19 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define push_context           ext_push_context
 #define pop_context            ext_pop_context
 
-#define Allocator         Ext_Allocator
-#define DefaultAllocator  Ext_DefaultAllocator
-#define default_allocator ext_default_allocator
+#define Allocator              Ext_Allocator
+#define DefaultAllocator       Ext_DefaultAllocator
+#define default_allocator      ext_default_allocator
+#define allocator_alloc        ext_allocator_alloc
+#define allocator_realloc      ext_allocator_realloc
+#define allocator_free         ext_allocator_free
+#define allocator_strdup       ext_allocator_strdup
+#define allocator_memdup       ext_allocator_memdup
+#define allocator_new          ext_allocator_new
+#define allocator_new_array    ext_allocator_new_array
+#define allocator_delete       ext_allocator_delete
+#define allocator_delete_array ext_allocator_delete_array
+#define allocator_clone        ext_allocator_clone
 
 #define TempAllocator   Ext_TempAllocator
 #define temp_allocator  ext_temp_allocator
