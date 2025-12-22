@@ -231,7 +231,7 @@ CTEST(context, push_pop) {
 }
 
 CTEST(arena, alloc_realloc_free) {
-    Arena a = new_arena();
+    Arena a = make_arena();
     int* i = arena_alloc(&a, sizeof(int));
     *i = 42;
     ASSERT_TRUE(a.allocated >= sizeof(int));
@@ -266,14 +266,14 @@ CTEST(arena, alloc_realloc_free) {
 }
 
 CTEST(arena, flexible_page) {
-    Arena a = new_arena();
+    Arena a = make_arena();
     void* mem = arena_alloc(&a, 1000);
     ASSERT_TRUE(mem != NULL);
     arena_destroy(&a);
 }
 
 CTEST(arena, alignment) {
-    Arena a = new_arena(.alignment = 128);
+    Arena a = make_arena(.alignment = 128);
     int* i = arena_alloc(&a, sizeof(int));
     ASSERT_TRUE((intptr_t)i % 128 == 0);
     ASSERT_TRUE(a.allocated == sizeof(int) + EXT_ALIGN(sizeof(int), 128));
@@ -290,7 +290,7 @@ CTEST(arena, alignment) {
 }
 
 CTEST(arena, custom_allocator) {
-    Arena a = new_arena(.page_allocator = &temp_allocator.base);
+    Arena a = make_arena(.page_allocator = &temp_allocator.base);
     int* i = arena_alloc(&a, sizeof(int));
     ASSERT_TRUE(i != NULL);
     ASSERT_TRUE(temp_allocator.start - (char*)temp_allocator.mem >= (intptr_t)sizeof(int));
@@ -300,7 +300,7 @@ CTEST(arena, custom_allocator) {
 }
 
 CTEST(arena, strdup) {
-    Arena a = new_arena();
+    Arena a = make_arena();
     const char* str = "Cantami, o Diva, del Pelide Achille";
     char* dup = arena_strdup(&a, str);
     ASSERT_TRUE(str != dup && strcmp(str, dup) == 0);
@@ -309,7 +309,7 @@ CTEST(arena, strdup) {
 }
 
 CTEST(arena, memdup) {
-    Arena a = new_arena();
+    Arena a = make_arena();
     unsigned char mem[] = "Cantami,\0o\0Diva,\0del\0Pelide\0Achille";
     unsigned char* dup = arena_memdup(&a, mem, sizeof(mem));
     ASSERT_TRUE(mem != dup && memcmp(mem, dup, sizeof(mem)) == 0);
@@ -318,7 +318,7 @@ CTEST(arena, memdup) {
 
 #ifndef EXTLIB_NO_STD
 CTEST(arena, sprintf) {
-    Arena a = new_arena();
+    Arena a = make_arena();
     char* s = arena_sprintf(&a, "%d %s", 3, "ciao");
     ASSERT_TRUE(strcmp(s, "3 ciao") == 0);
     arena_destroy(&a);
@@ -326,7 +326,7 @@ CTEST(arena, sprintf) {
 #endif  // EXTLIB_NO_STD
 
 CTEST(arena, reset) {
-    Arena a = new_arena(.page_allocator = &temp_allocator.base);
+    Arena a = make_arena(.page_allocator = &temp_allocator.base);
 
     for(int i = 0; i < 5000; i++) {
         arena_sprintf(&a, "Mem %d", i);
@@ -347,7 +347,7 @@ CTEST(arena, reset) {
 }
 
 CTEST(arena, rewind) {
-    Arena a = new_arena(.page_allocator = &temp_allocator.base);
+    Arena a = make_arena(.page_allocator = &temp_allocator.base);
 
     for(int i = 0; i < 5000; i++) {
         arena_sprintf(&a, "Mem %d", i);
@@ -373,7 +373,7 @@ CTEST(arena, rewind) {
 }
 
 CTEST(arena, checkpoint) {
-    Arena a = new_arena(.page_allocator = &temp_allocator.base);
+    Arena a = make_arena(.page_allocator = &temp_allocator.base);
     ArenaCheckpoint c = arena_checkpoint(&a);
 
     for(int i = 0; i < 5000; i++) {
@@ -1230,6 +1230,9 @@ CTEST(defer, loop) {
 static void sb_log(Ext_LogLevel lvl, void* data, const char* fmt, va_list ap) {
     StringBuffer* sb = (StringBuffer*)data;
     switch(lvl) {
+    case EXT_DEBUG:
+        sb_append_cstr(sb, "[DEBUG] ");
+        break;
     case EXT_INFO:
         sb_append_cstr(sb, "[INFO] ");
         break;

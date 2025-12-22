@@ -7,3 +7,5 @@ test/out.txt
 examples/*
 !examples/*.[ch]
 !examples/*html
+
+compile_commands.json

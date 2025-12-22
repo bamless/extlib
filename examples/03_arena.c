@@ -19,7 +19,7 @@ int printf(const char* fmt, ...);
 #define EXTLIB_IMPL
 #include "../extlib.h"
 
-Arena arena = new_arena();
+Arena arena = make_arena();
 
 const char* prec[] = {
     "+-",

@@ -1,5 +1,5 @@
 CC      ?= $(CC)
-CFLAGS  ?= -Wall -Wextra -std=c99 -ggdb
+CFLAGS  ?= -Wall -Wextra -Wno-override-init -std=c99 -ggdb
 LDFLAGS ?=
 
 .PHONY: all
