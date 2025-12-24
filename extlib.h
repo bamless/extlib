@@ -3233,7 +3233,6 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define ArenaPage             Ext_ArenaPage
 #define ArenaCheckpoint       Ext_ArenaCheckpoint
 #define make_arena            ext_make_arena
-#define arena_init            ext_arena_init
 #define arena_alloc           ext_arena_alloc
 #define arena_realloc         ext_arena_realloc
 #define arena_free            ext_arena_free
