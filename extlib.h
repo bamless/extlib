@@ -1,5 +1,5 @@
 /**
- * extlib v1.2.0 - c extended library
+ * extlib v1.2.1 - c extended library
  *
  * Single-header-file library that provides functionality that extends the standard c library.
  * Features:
@@ -42,6 +42,11 @@
  *      SECTION: IO
  *
  *  Changelog:
+ *
+ *  v1.2.1:
+ *      - Added `arena_push` and `arena_pop` macros
+ *      - Renamed `DEFER_LOOP` to `defer_loop`. Old version is mantained for backwards compatibility
+ *      - Removed unused defines
  *  
  *  v1.2.0:
  *      - Added `EXT_DEBUG` logging level
@@ -315,11 +320,12 @@ void assert(int c);  // TODO: are we sure we want to require wasm embedder to pr
 // USAGE:
 // ```c
 // void* mem = ext_alloc(...);
-// DEFER_LOOP((void)0, ext_free(mem)) {
+// defer_loop((void)0, ext_free(mem)) {
 //     // use mem, it will be freed at the end of the scope
 // }
 // ```
-#define EXT_DEFER_LOOP(begin, end) for(int i__ = ((begin), 0); i__ != 1; i__ = ((end), 1))
+#define ext_defer_loop(begin, end) for(int i__ = ((begin), 0); i__ != 1; i__ = ((end), 1))
+#define EXT_DEFER_LOOP ext_defer_loop
 
 // Assigns passed in value to variable, and jumps to label.
 //
@@ -719,6 +725,11 @@ typedef struct Ext_Arena {
         .alignment = EXT_DEFAULT_ALIGNMENT, .page_size = EXT_ARENA_PAGE_SZ,                \
         __VA_ARGS__                                                                        \
     })
+
+#define ext_arena_push(a, T)              ext_arena_alloc(a, sizeof(T))
+#define ext_arena_push_array(a, T, n)     ext_arena_alloc(a, sizeof(T) * (n))
+#define ext_arena_pop(a, T, ptr)          ext_arena_free(a, ptr, sizeof(T))
+#define ext_arena_pop_array(a, T, n, ptr) ext_arena_free(a, ptr, sizeof(T) * (n))
 
 // Allocates `size` bytes in the arena
 void *ext_arena_alloc(Ext_Arena *a, size_t size);
@@ -3177,6 +3188,7 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define MiB           EXT_MiB
 #define GiB           EXT_GiB
 #define PRINTF_FORMAT EXT_PRINTF_FORMAT
+#define defer_loop    ext_defer_loop
 #define DEFER_LOOP    EXT_DEFER_LOOP
 #define return_exit   ext_return_exit
 
@@ -3236,6 +3248,10 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define arena_alloc           ext_arena_alloc
 #define arena_realloc         ext_arena_realloc
 #define arena_free            ext_arena_free
+#define arena_push            ext_arena_push
+#define arena_push_array      ext_arena_push_array
+#define arena_pop             ext_arena_pop
+#define arena_pop_array       ext_arena_pop_array
 #define arena_checkpoint      ext_arena_checkpoint
 #define arena_rewind          ext_arena_rewind
 #define arena_reset           ext_arena_reset

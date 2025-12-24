@@ -116,7 +116,7 @@ Expr* parse_lit(Src* src) {
         }
     }
 
-    Expr* lit = arena_alloc(&arena, sizeof(Expr));
+    Expr* lit = arena_push(&arena, Expr);
     lit->kind = LIT;
     lit->as.lit = sign * val;
     return lit;
@@ -135,7 +135,7 @@ Expr* parse_bin_expr(Src* src, size_t prec) {
         Expr* r = parse_bin_expr(src, prec + 1);
         if(!r) return NULL;
 
-        Expr* bin = arena_alloc(&arena, sizeof(Expr));
+        Expr* bin = arena_push(&arena, Expr);
         bin->kind = BIN;
         bin->as.bin = (BinExpr){op, l, r};
         l = bin;

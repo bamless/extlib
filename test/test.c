@@ -1220,7 +1220,7 @@ CTEST(hmap, delete_ss) {
 
 CTEST(defer, loop) {
     char* str = ext_strdup("hello, world");
-    DEFER_LOOP((void)0, ext_free(str, 13)) {
+    defer_loop((void)0, ext_free(str, 13)) {
         str[0] = 'H';
         str[7] = 'W';
         ASSERT_TRUE(strcmp(str, "Hello, World") == 0);
