@@ -552,7 +552,7 @@ inline void *ext_realloc(void *ptr, size_t old_sz, size_t new_sz) {
     return ext_allocator_realloc(ext_context->alloc, ptr, old_sz, new_sz);
 }
 inline void ext_free(void *ptr, size_t size) {
-    return ext_allocator_free(ext_context->alloc, ptr, size);
+    ext_allocator_free(ext_context->alloc, ptr, size);
 }
 // Copies a cstring by using the current context allocator
 inline char *ext_strdup(const char *s) {
