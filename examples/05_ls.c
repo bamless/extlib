@@ -13,39 +13,33 @@
 #include "../extlib.h"
 
 #define shift(argc, argv) ((argc)--, *(argv)++)
-#define unshift(argc, argv, elem)                            \
-    do {                                                     \
-        argc++, argv--;                                      \
-        memmove(argv, argv + 1, (argc - 1) * sizeof(*argv)); \
-        argv[argc - 1] = (elem);                             \
-    } while(0)
 
 static bool list_dir(const char* dir, bool all, bool recursive) {
     Paths paths = {0};
     if(!read_dir(dir, &paths)) return false;
 
-    bool all_ok = true;
+    bool ok = true;
     array_foreach(char*, it, &paths) {
         if(!all && **it == '.') continue;
+        void* temp = temp_checkpoint();
 
-        void* checkpoint = temp_checkpoint();
-        char* abs;
+        char* full;
         if(dir[strlen(dir) - 1] == '/') {
-            abs = temp_sprintf("%s%s", dir, *it);
+            full = temp_sprintf("%s%s", dir, *it);
         } else {
-            abs = temp_sprintf("%s/%s", dir, *it);
+            full = temp_sprintf("%s/%s", dir, *it);
         }
 
-        if(recursive && get_file_type(abs) == FILE_DIR) {
-            all_ok &= list_dir(abs, all, recursive);
+        if(recursive && get_file_type(full) == FILE_DIR) {
+            ok &= list_dir(full, all, recursive);
         }
 
-        printf("%s\n", abs);
-        temp_rewind(checkpoint);
+        printf("%s\n", full);
+        temp_rewind(temp);
     }
 
     free_paths(&paths);
-    return all_ok;
+    return ok;
 }
 
 static void usage(const char* prog) {
@@ -59,22 +53,23 @@ int main(int argc, char** argv) {
     char* prog = shift(argc, argv);
     bool all = false, recursive = false;
 
-    int optn = 0;
-    int nargs = argc;
-    while(optn++ < nargs) {
-        char* arg = shift(argc, argv);
-        if(strcmp("--", arg) == 0) break;
+    int npos = 0;
+    for(int i = 0; i < argc; i++) {
+        char* arg = argv[i];
+        if(strcmp("--", arg) == 0) {
+            for(int j = i + 1; j < argc; j++) argv[npos++] = argv[j];
+            break;
+        }
 
         size_t arglen = strlen(arg);
         if(arglen <= 1 || *arg != '-') {
-            unshift(argc, argv, arg);
+            argv[npos++] = arg;
             continue;
         }
 
-        shift(arglen, arg);
-        while(arglen) {
-            char opt = shift(arglen, arg);
-            switch(opt) {
+        char* flags = arg + 1;
+        while(*flags) {
+            switch(*flags++) {
             case 'R':
                 recursive = true;
                 break;
@@ -82,12 +77,13 @@ int main(int argc, char** argv) {
                 all = true;
                 break;
             default:
-                fprintf(stderr, "Unknown option '%c'\n", opt);
+                fprintf(stderr, "Unknown option '%c'\n", flags[-1]);
                 usage(prog);
                 return 1;
             }
         }
     }
+    argc = npos;
 
     if(argc != 0) {
         int res = 0;

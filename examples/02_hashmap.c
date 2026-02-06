@@ -15,12 +15,6 @@
 #define HIST_DEF 80
 
 #define shift(argc, argv) ((argc)--, *(argv)++)
-#define unshift(argc, argv, elem)                            \
-    do {                                                     \
-        argc++, argv--;                                      \
-        memmove(argv, argv + 1, (argc - 1) * sizeof(*argv)); \
-        argv[argc - 1] = (elem);                             \
-    } while(0)
 
 const char* symbols = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
 
@@ -64,15 +58,17 @@ int main(int argc, char** argv) {
     char* prog = shift(argc, argv);
     int hist = 0;
 
-    int optn = 0;
-    int nargs = argc;
-    while(optn++ < nargs) {
-        char* arg = shift(argc, argv);
-        if(strcmp("--", arg) == 0) break;
+    int npos = 0;
+    for(int i = 0; i < argc; i++) {
+        char* arg = argv[i];
+        if(strcmp("--", arg) == 0) {
+            for(int j = i + 1; j < argc; j++) argv[npos++] = argv[j];
+            break;
+        }
 
         size_t arglen = strlen(arg);
         if(arglen <= 1 || *arg != '-') {
-            unshift(argc, argv, arg);
+            argv[npos++] = arg;
             continue;
         }
 
@@ -80,21 +76,20 @@ int main(int argc, char** argv) {
         switch(opt) {
         case 'h':
             hist = HIST_DEF;
-            if(optn >= nargs) break;
+            if(i + 1 >= argc) break;  // last argument
 
             char* endptr;
-            int ncols = strtod(*argv, &endptr);
-            if(*endptr != '\0') break;
+            long ncols = strtol(argv[i + 1], &endptr, 10);
+            if(*endptr != '\0') break;  // next argument is not an integer; stick with default cols
+            i++;
 
-            if(ncols == 0) {
-                fprintf(stderr, "'-h' cannot be 0\n");
+            if(ncols <= 0) {
+                fprintf(stderr, "'-h' must be > 0\n");
                 usage(prog);
                 return 1;
             }
 
-            hist = ncols;
-            optn++;
-            shift(argc, argv);
+            hist = (int)ncols;
             break;
         case 'r':
             reverse = true;
@@ -105,6 +100,7 @@ int main(int argc, char** argv) {
             return 1;
         }
     }
+    argc = npos;
 
     StringBuffer file = {0};
     if(argc > 0) {
