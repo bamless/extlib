@@ -1,5 +1,7 @@
 # extlib: c extended library
 
+[![Build](https://github.com/bamless/extlib/actions/workflows/build.yml/badge.svg)](https://github.com/bamless/extlib/actions/workflows/build.yml)
+
 extlib is a header-only library that implements common data structures and algorithms that are not
 provided by the c standard library.
 
