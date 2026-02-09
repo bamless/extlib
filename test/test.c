@@ -14,19 +14,19 @@
 
 size_t allocated;
 
-void* tracking_alloc(Allocator* a, size_t size) {
+void *tracking_alloc(Allocator *a, size_t size) {
     (void)a;
     allocated += size;
     return default_allocator.base.alloc(&default_allocator.base, size);
 }
 
-void* tracking_realloc(Allocator* a, void* ptr, size_t old_sz, size_t new_sz) {
+void *tracking_realloc(Allocator *a, void *ptr, size_t old_sz, size_t new_sz) {
     (void)a;
     allocated += (int)new_sz - (int)old_sz;
     return default_allocator.base.realloc(&default_allocator.base, ptr, old_sz, new_sz);
 }
 
-void tracking_free(Allocator* a, void* ptr, size_t size) {
+void tracking_free(Allocator *a, void *ptr, size_t size) {
     (void)a;
     allocated -= size;
     default_allocator.base.free(&default_allocator.base, ptr, size);
@@ -38,7 +38,7 @@ Allocator tracking_allocator = {
     tracking_free,
 };
 
-int main(int argc, const char** argv) {
+int main(int argc, const char **argv) {
     int res;
     PUSH_ALLOCATOR(&tracking_allocator) {
         res = ctest_main(argc, argv);
@@ -51,13 +51,13 @@ int main(int argc, const char** argv) {
 }
 
 typedef struct {
-    int* items;
+    int *items;
     size_t size, capacity;
-    Allocator* allocator;
+    Allocator *allocator;
 } Ints;
 
 CTEST(alloc, alloc_free) {
-    int* i = ext_alloc(sizeof(int));
+    int *i = ext_alloc(sizeof(int));
     ASSERT_TRUE(allocated == sizeof(int));
     i = ext_realloc(i, sizeof(int), sizeof(int) * 20);
     ASSERT_TRUE(allocated == sizeof(int) * 20);
@@ -66,12 +66,12 @@ CTEST(alloc, alloc_free) {
 }
 
 CTEST(alloc, new_delete) {
-    int* i = ext_new(int);
+    int *i = ext_new(int);
     ASSERT_TRUE(allocated == sizeof(int));
     ext_delete(int, i);
     ASSERT_TRUE(allocated == 0);
 
-    int* ints = ext_new_array(int, 20);
+    int *ints = ext_new_array(int, 20);
     ASSERT_TRUE(allocated == 20 * sizeof(int));
     ext_delete_array(int, 20, ints);
     ASSERT_TRUE(allocated == 0);
@@ -83,13 +83,13 @@ typedef struct {
 
 CTEST(alloc, clone) {
     int i = 32;
-    int* cloned = ext_clone(int, &i);
+    int *cloned = ext_clone(int, &i);
     ASSERT_TRUE(i == *cloned);
 
-    int* inline_cloned = ext_clone(int, (int[]){42});
+    int *inline_cloned = ext_clone(int, (int[]){42});
     ASSERT_TRUE(*inline_cloned == 42);
 
-    ToClone* cloned_struct = ext_clone(ToClone, (&(ToClone){1, 2, 3}));
+    ToClone *cloned_struct = ext_clone(ToClone, (&(ToClone){1, 2, 3}));
     ASSERT_TRUE(cloned_struct->a == 1 && cloned_struct->b == 2 && cloned_struct->c == 3);
 
     ext_delete(int, cloned);
@@ -98,11 +98,11 @@ CTEST(alloc, clone) {
 }
 
 CTEST(temp, set_mem) {
-    void* new_mem = malloc(1000);
+    void *new_mem = malloc(1000);
     temp_set_mem(new_mem, 1000);
     ASSERT_TRUE(temp_allocator.start == new_mem);
     ASSERT_TRUE(temp_allocator.mem_size == 1000);
-    short* i = temp_alloc(sizeof(int));
+    short *i = temp_alloc(sizeof(int));
     *i = 49;
     ASSERT_TRUE(*i == 49);
     temp_set_mem(ext_temp_mem, sizeof(ext_temp_mem));
@@ -113,23 +113,23 @@ CTEST(temp, set_mem) {
 
 CTEST(temp, reset) {
     temp_alloc(1000);
-    ASSERT_TRUE(temp_allocator.start > (char*)temp_allocator.mem);
+    ASSERT_TRUE(temp_allocator.start > (char *)temp_allocator.mem);
     temp_reset();
     ASSERT_TRUE(temp_allocator.start == temp_allocator.mem);
 }
 
 CTEST(temp, alloc) {
-    int* i = temp_alloc(sizeof(*i));
-    ASSERT_TRUE(temp_allocator.start - (char*)temp_allocator.mem >= (intptr_t)sizeof(int));
+    int *i = temp_alloc(sizeof(*i));
+    ASSERT_TRUE(temp_allocator.start - (char *)temp_allocator.mem >= (intptr_t)sizeof(int));
     temp_reset();
 }
 
 CTEST(temp, realloc) {
-    int* ints = temp_alloc(sizeof(int) * 100);
+    int *ints = temp_alloc(sizeof(int) * 100);
     for(int i = 0; i < 100; i++) {
         ints[i] = i;
     }
-    int* new_ints = temp_realloc(ints, 100 * sizeof(int), 1000 * sizeof(int));
+    int *new_ints = temp_realloc(ints, 100 * sizeof(int), 1000 * sizeof(int));
     ASSERT_TRUE(ints == new_ints);
     for(int i = 0; i < 100; i++) {
         ASSERT_TRUE(new_ints[i] == i);
@@ -154,8 +154,8 @@ CTEST(temp, available) {
 
 CTEST(temp, checkpoint) {
     temp_alloc(100 * sizeof(int));
-    char* start = temp_allocator.start;
-    void* checkpoint = temp_checkpoint();
+    char *start = temp_allocator.start;
+    void *checkpoint = temp_checkpoint();
     temp_alloc(1000 * sizeof(int));
     temp_rewind(checkpoint);
     ASSERT_TRUE(temp_allocator.start == start);
@@ -163,8 +163,8 @@ CTEST(temp, checkpoint) {
 }
 
 CTEST(temp, strdup) {
-    const char* str = "Cantami, o Diva, del Pelide Achille";
-    char* dup = temp_strdup(str);
+    const char *str = "Cantami, o Diva, del Pelide Achille";
+    char *dup = temp_strdup(str);
     ASSERT_TRUE(str != dup && strcmp(str, dup) == 0);
     ASSERT_TRUE(dup[strlen(str)] == 0);
     temp_reset();
@@ -172,15 +172,15 @@ CTEST(temp, strdup) {
 
 CTEST(temp, memdup) {
     unsigned char mem[] = "Cantami,\0o\0Diva,\0del\0Pelide\0Achille";
-    unsigned char* dup = temp_memdup(mem, sizeof(mem));
+    unsigned char *dup = temp_memdup(mem, sizeof(mem));
     ASSERT_TRUE(mem != dup && memcmp(mem, dup, sizeof(mem)) == 0);
     temp_reset();
 }
 
 #ifndef EXTLIB_NO_STD
 CTEST(temp, sprintf) {
-    char* s = temp_sprintf("%s:%d", "test.c", 162);
-    const char* expected = "test.c:162";
+    char *s = temp_sprintf("%s:%d", "test.c", 162);
+    const char *expected = "test.c:162";
     ASSERT_TRUE(strcmp(s, expected) == 0);
     temp_reset();
 }
@@ -191,23 +191,23 @@ typedef struct {
     bool noop;
 } NoopAlloc;
 
-void* noop_alloc(Allocator* a, size_t size) {
+void *noop_alloc(Allocator *a, size_t size) {
     (void)size;
-    NoopAlloc* allocator = (NoopAlloc*)a;
+    NoopAlloc *allocator = (NoopAlloc *)a;
     ASSERT_TRUE(allocator->noop);
-    return (void*)1;
+    return (void *)1;
 }
 
-void* noop_realloc(Allocator* a, void* ptr, size_t old_sz, size_t new_sz) {
+void *noop_realloc(Allocator *a, void *ptr, size_t old_sz, size_t new_sz) {
     (void)ptr, (void)old_sz, (void)new_sz;
-    NoopAlloc* allocator = (NoopAlloc*)a;
+    NoopAlloc *allocator = (NoopAlloc *)a;
     ASSERT_TRUE(allocator->noop);
-    return (void*)2;
+    return (void *)2;
 }
 
-void noop_free(Allocator* a, void* ptr, size_t size) {
+void noop_free(Allocator *a, void *ptr, size_t size) {
     (void)ptr, (void)size;
-    NoopAlloc* allocator = (NoopAlloc*)a;
+    NoopAlloc *allocator = (NoopAlloc *)a;
     ASSERT_TRUE(allocator->noop);
 }
 
@@ -220,10 +220,10 @@ CTEST(context, push_pop) {
         ASSERT_TRUE(ext_context == &ctx);
         ASSERT_TRUE(ext_context->alloc->alloc == noop_alloc);
         ASSERT_TRUE(ext_context->prev->alloc == &tracking_allocator);
-        int* ptr = ext_alloc(sizeof(int));
-        ASSERT_TRUE(ptr == (void*)1);
+        int *ptr = ext_alloc(sizeof(int));
+        ASSERT_TRUE(ptr == (void *)1);
         ptr = ext_realloc(ptr, sizeof(int), sizeof(int) * 20);
-        ASSERT_TRUE(ptr == (void*)2);
+        ASSERT_TRUE(ptr == (void *)2);
         ext_free(ptr, sizeof(int) * 20);
     }
     ASSERT_TRUE(ext_context != &ctx);
@@ -232,11 +232,11 @@ CTEST(context, push_pop) {
 
 CTEST(arena, alloc_realloc_free) {
     Arena a = make_arena();
-    int* i = arena_alloc(&a, sizeof(int));
+    int *i = arena_alloc(&a, sizeof(int));
     *i = 42;
     ASSERT_TRUE(a.allocated >= sizeof(int));
     ASSERT_TRUE(a.first_page && a.first_page == a.last_page);
-    int* new_i = arena_realloc(&a, i, sizeof(int), sizeof(int) * 20);
+    int *new_i = arena_realloc(&a, i, sizeof(int), sizeof(int) * 20);
     ASSERT_TRUE(*new_i == 42);
     ASSERT_TRUE(i == new_i);
     ASSERT_TRUE(a.allocated == sizeof(int) * 20);
@@ -252,14 +252,14 @@ CTEST(arena, alloc_realloc_free) {
         ASSERT_TRUE(i == new_i[i]);
     }
 
-    char* start = a.last_page->start;
+    char *start = a.last_page->start;
     arena_free(&a, new_i, sizeof(int) * 100);
     ASSERT_TRUE(a.last_page->start < start);
 
     arena_reset(&a);
     ASSERT_TRUE(a.allocated == 0);
     ASSERT_TRUE(a.first_page != NULL &&
-                ((size_t)(a.first_page->end - (char*)a.first_page) == a.page_size));
+                ((size_t)(a.first_page->end - (char *)a.first_page) == a.page_size));
 
     arena_destroy(&a);
     ASSERT_TRUE(allocated == 0);
@@ -267,17 +267,17 @@ CTEST(arena, alloc_realloc_free) {
 
 CTEST(arena, flexible_page) {
     Arena a = make_arena();
-    void* mem = arena_alloc(&a, 1000);
+    void *mem = arena_alloc(&a, 1000);
     ASSERT_TRUE(mem != NULL);
     arena_destroy(&a);
 }
 
 CTEST(arena, alignment) {
     Arena a = make_arena(.alignment = 128);
-    int* i = arena_alloc(&a, sizeof(int));
+    int *i = arena_alloc(&a, sizeof(int));
     ASSERT_TRUE((intptr_t)i % 128 == 0);
     ASSERT_TRUE(a.allocated == sizeof(int) + EXT_ALIGN(sizeof(int), 128));
-    int* new_i = arena_realloc(&a, i, sizeof(int), sizeof(int) * 10);
+    int *new_i = arena_realloc(&a, i, sizeof(int), sizeof(int) * 10);
     ASSERT_TRUE(i == new_i);
     arena_alloc(&a, 1);
     new_i = arena_realloc(&a, new_i, sizeof(int) * 10, sizeof(int) * 100);
@@ -291,9 +291,9 @@ CTEST(arena, alignment) {
 
 CTEST(arena, custom_allocator) {
     Arena a = make_arena(.page_allocator = &temp_allocator.base);
-    int* i = arena_alloc(&a, sizeof(int));
+    int *i = arena_alloc(&a, sizeof(int));
     ASSERT_TRUE(i != NULL);
-    ASSERT_TRUE(temp_allocator.start - (char*)temp_allocator.mem >= (intptr_t)sizeof(int));
+    ASSERT_TRUE(temp_allocator.start - (char *)temp_allocator.mem >= (intptr_t)sizeof(int));
     ASSERT_TRUE(allocated == 0);
     arena_destroy(&a);
     temp_reset();
@@ -301,8 +301,8 @@ CTEST(arena, custom_allocator) {
 
 CTEST(arena, strdup) {
     Arena a = make_arena();
-    const char* str = "Cantami, o Diva, del Pelide Achille";
-    char* dup = arena_strdup(&a, str);
+    const char *str = "Cantami, o Diva, del Pelide Achille";
+    char *dup = arena_strdup(&a, str);
     ASSERT_TRUE(str != dup && strcmp(str, dup) == 0);
     ASSERT_TRUE(dup[strlen(str)] == 0);
     ext_arena_destroy(&a);
@@ -311,7 +311,7 @@ CTEST(arena, strdup) {
 CTEST(arena, memdup) {
     Arena a = make_arena();
     unsigned char mem[] = "Cantami,\0o\0Diva,\0del\0Pelide\0Achille";
-    unsigned char* dup = arena_memdup(&a, mem, sizeof(mem));
+    unsigned char *dup = arena_memdup(&a, mem, sizeof(mem));
     ASSERT_TRUE(mem != dup && memcmp(mem, dup, sizeof(mem)) == 0);
     arena_destroy(&a);
 }
@@ -319,7 +319,7 @@ CTEST(arena, memdup) {
 #ifndef EXTLIB_NO_STD
 CTEST(arena, sprintf) {
     Arena a = make_arena();
-    char* s = arena_sprintf(&a, "%d %s", 3, "ciao");
+    char *s = arena_sprintf(&a, "%d %s", 3, "ciao");
     ASSERT_TRUE(strcmp(s, "3 ciao") == 0);
     arena_destroy(&a);
 }
@@ -355,9 +355,9 @@ CTEST(arena, rewind) {
 
     ASSERT_TRUE(a.allocated > 0);
 
-    ArenaPage* last_page = a.last_page;
-    char* last_page_start = last_page->start;
-    char* last_page_end = last_page->end;
+    ArenaPage *last_page = a.last_page;
+    char *last_page_start = last_page->start;
+    char *last_page_end = last_page->end;
     ArenaCheckpoint c = arena_checkpoint(&a);
 
     for(int i = 0; i < 5000; i++) {
@@ -396,7 +396,7 @@ CTEST(arena, checkpoint) {
     arena_rewind(&a, c);
     ASSERT_TRUE(a.allocated == c.allocated);
     ASSERT_TRUE(a.last_page == c.page && a.last_page->start == c.page_start);
-    for(ArenaPage* page = a.last_page->next; page != NULL; page = page->next) {
+    for(ArenaPage *page = a.last_page->next; page != NULL; page = page->next) {
         ASSERT_TRUE(page->start == page->data + EXT_ALIGN(page->data, a.alignment));
     }
 
@@ -626,11 +626,65 @@ CTEST(sb, replace) {
     sb_free(&sb);
 }
 
+CTEST(sb, to_upper) {
+    StringBuffer sb = {0};
+    sb_append_cstr(&sb, "Hello, World! 123");
+    sb_to_upper(&sb);
+    ASSERT_TRUE(memcmp(sb.items, "HELLO, WORLD! 123", sb.size) == 0);
+
+    // Already uppercase
+    sb_to_upper(&sb);
+    ASSERT_TRUE(memcmp(sb.items, "HELLO, WORLD! 123", sb.size) == 0);
+
+    sb_free(&sb);
+}
+
+CTEST(sb, to_lower) {
+    StringBuffer sb = {0};
+    sb_append_cstr(&sb, "Hello, World! 123");
+    sb_to_lower(&sb);
+    ASSERT_TRUE(memcmp(sb.items, "hello, world! 123", sb.size) == 0);
+
+    // Already lowercase
+    sb_to_lower(&sb);
+    ASSERT_TRUE(memcmp(sb.items, "hello, world! 123", sb.size) == 0);
+
+    sb_free(&sb);
+}
+
+CTEST(sb, reverse) {
+    StringBuffer sb = {0};
+
+    // Odd-length string
+    sb_append_cstr(&sb, "abcde");
+    sb_reverse(&sb);
+    ASSERT_TRUE(memcmp(sb.items, "edcba", sb.size) == 0);
+    sb.size = 0;
+
+    // Even-length string
+    sb_append_cstr(&sb, "abcd");
+    sb_reverse(&sb);
+    ASSERT_TRUE(memcmp(sb.items, "dcba", sb.size) == 0);
+    sb.size = 0;
+
+    // Single char
+    sb_append_cstr(&sb, "x");
+    sb_reverse(&sb);
+    ASSERT_TRUE(memcmp(sb.items, "x", sb.size) == 0);
+    sb.size = 0;
+
+    // Empty
+    sb_reverse(&sb);
+    ASSERT_TRUE(sb.size == 0);
+
+    sb_free(&sb);
+}
+
 CTEST(sb, to_cstr) {
     StringBuffer sb = {0};
     const char s[] = "Cantami, o Diva, del Pelide Achille";
     sb_append(&sb, s, sizeof(s) - 1);
-    char* res = sb_to_cstr(&sb);
+    char *res = sb_to_cstr(&sb);
     ASSERT_TRUE(strcmp(s, res) == 0);
     ext_free(res, strlen(res) + 1);
 }
@@ -639,7 +693,7 @@ CTEST(sb, to_cstr) {
 CTEST(sb, appendf) {
     StringBuffer sb = {0};
     int res = sb_appendf(&sb, "%s:%d", "test.c", 494);
-    const char* expected = "test.c:429";
+    const char *expected = "test.c:429";
     ASSERT_TRUE(res == (int)strlen(expected));
     ASSERT_TRUE(memcmp(expected, sb.items, strlen(expected)));
     sb_free(&sb);
@@ -669,7 +723,7 @@ CTEST(slice, slice) {
 }
 
 CTEST(slice, split_once) {
-    const char* expected[] = {
+    const char *expected[] = {
         "Cantami,", "o", "Diva,", "del", "Pelide", "Achille",
     };
     StringSlice ss = ss_from_cstr("Cantami, o Diva, del Pelide Achille");
@@ -683,7 +737,7 @@ CTEST(slice, split_once) {
 }
 
 CTEST(slice, rsplit_once) {
-    const char* expected[] = {
+    const char *expected[] = {
         "Achille", "Pelide", "del", "Diva,", "o", "Cantami,",
     };
     StringSlice ss = ss_from_cstr("Cantami, o Diva, del Pelide Achille");
@@ -697,7 +751,7 @@ CTEST(slice, rsplit_once) {
 }
 
 CTEST(slice, split_once_cstr) {
-    const char* expected[] = {
+    const char *expected[] = {
         "Cantami",
         "o Diva",
         "del Pelide Achille",
@@ -733,7 +787,7 @@ CTEST(slice, split_once_cstr) {
 }
 
 CTEST(slice, rsplit_once_cstr) {
-    const char* expected[] = {
+    const char *expected[] = {
         "del Pelide Achille",
         "o Diva",
         "Cantami",
@@ -769,7 +823,7 @@ CTEST(slice, rsplit_once_cstr) {
 }
 
 CTEST(slice, split_once_any) {
-    const char* expected[] = {"one", "two", "three", "four", "five", "six"};
+    const char *expected[] = {"one", "two", "three", "four", "five", "six"};
     StringSlice ss = ss_from_cstr("one,two three,four.five six");
     size_t i = 0;
     while(ss.size) {
@@ -781,7 +835,7 @@ CTEST(slice, split_once_any) {
 }
 
 CTEST(slice, rsplit_once_any) {
-    const char* expected[] = {"six", "five", "four", "three", "two", "one"};
+    const char *expected[] = {"six", "five", "four", "three", "two", "one"};
     StringSlice ss = ss_from_cstr("one,two three,four.five six");
     size_t i = 0;
     while(ss.size) {
@@ -793,7 +847,7 @@ CTEST(slice, rsplit_once_any) {
 }
 
 CTEST(slice, split_once_ws) {
-    const char* expected[] = {
+    const char *expected[] = {
         "Cantami,", "o", "Diva,", "del", "Pelide", "Achille",
     };
     StringSlice ss = ss_from_cstr("Cantami, o\f\tDiva,\ndel\v\r\nPelide \v Achille");
@@ -807,7 +861,7 @@ CTEST(slice, split_once_ws) {
 }
 
 CTEST(slice, rsplit_once_ws) {
-    const char* expected[] = {"Achille", "Pelide", "del", "Diva,", "o", "Cantami,"};
+    const char *expected[] = {"Achille", "Pelide", "del", "Diva,", "o", "Cantami,"};
     StringSlice ss = ss_from_cstr("Cantami, o\f\tDiva,\ndel\v\r\nPelide \v Achille");
     size_t i = 0;
     while(ss.size) {
@@ -882,6 +936,22 @@ CTEST(slice, trunc_end) {
     ASSERT_TRUE(trunc.size == ss.size && ss_eq(trunc, ss));
 }
 
+CTEST(slice, substr) {
+    StringSlice ss = ss_from_cstr("Hello, World!");
+
+    // Middle substring
+    ASSERT_TRUE(ss_eq(ss_substr(ss, 7, 5), SS("World")));
+
+    // Start at 0
+    ASSERT_TRUE(ss_eq(ss_substr(ss, 0, 5), SS("Hello")));
+
+    // len exceeds remaining
+    ASSERT_TRUE(ss_eq(ss_substr(ss, 7, 100), SS("World!")));
+
+    // start past end
+    ASSERT_TRUE(ss_substr(ss, 100, 5).size == 0);
+}
+
 CTEST(slice, starts_with) {
     StringSlice ss = ss_from_cstr("Cantami, o Diva, del Pelide Achille");
     ASSERT_TRUE(ss_starts_with(ss, ss_from_cstr("Cantami,")));
@@ -903,18 +973,396 @@ CTEST(slice, ends_with) {
         !ss_ends_with(ss, ss_from_cstr("per acquistare a sé la vita e il ritorno ai compagni.")));
 }
 
+CTEST(slice, strip_prefix) {
+    StringSlice ss = ss_from_cstr("Hello, World!");
+
+    // Prefix present
+    StringSlice stripped = ss_strip_prefix(ss, SS("Hello, "));
+    ASSERT_TRUE(ss_eq(stripped, SS("World!")));
+
+    // Prefix absent — returns original
+    stripped = ss_strip_prefix(ss, SS("Goodbye"));
+    ASSERT_TRUE(ss_eq(stripped, ss));
+
+    // Empty prefix — returns original
+    stripped = ss_strip_prefix(ss, SS(""));
+    ASSERT_TRUE(ss_eq(stripped, ss));
+
+    // Prefix == entire string
+    stripped = ss_strip_prefix(ss, ss);
+    ASSERT_TRUE(stripped.size == 0);
+
+    // cstr variant
+    stripped = ss_strip_prefix_cstr(ss, "Hello, ");
+    ASSERT_TRUE(ss_eq(stripped, SS("World!")));
+    stripped = ss_strip_prefix_cstr(ss, "Goodbye");
+    ASSERT_TRUE(ss_eq(stripped, ss));
+}
+
+CTEST(slice, strip_suffix) {
+    StringSlice ss = ss_from_cstr("Hello, World!");
+
+    // Suffix present
+    StringSlice stripped = ss_strip_suffix(ss, SS(", World!"));
+    ASSERT_TRUE(ss_eq(stripped, SS("Hello")));
+
+    // Suffix absent — returns original
+    stripped = ss_strip_suffix(ss, SS("Goodbye"));
+    ASSERT_TRUE(ss_eq(stripped, ss));
+
+    // Empty suffix — returns original
+    stripped = ss_strip_suffix(ss, SS(""));
+    ASSERT_TRUE(ss_eq(stripped, ss));
+
+    // Suffix == entire string
+    stripped = ss_strip_suffix(ss, ss);
+    ASSERT_TRUE(stripped.size == 0);
+
+    // cstr variant
+    stripped = ss_strip_suffix_cstr(ss, ", World!");
+    ASSERT_TRUE(ss_eq(stripped, SS("Hello")));
+    stripped = ss_strip_suffix_cstr(ss, "Goodbye");
+    ASSERT_TRUE(ss_eq(stripped, ss));
+}
+
 CTEST(slice, eq) {
     ASSERT_TRUE(ss_eq(ss_from_cstr("Hello"), ss_from_cstr("Hello")));
     ASSERT_TRUE(!ss_eq(ss_from_cstr("Hello"), ss_from_cstr("Olleh")));
     ASSERT_TRUE(!ss_eq(ss_from_cstr("Hello"), ss_from_cstr("")));
 }
 
+CTEST(slice, eq_ignore_case) {
+    ASSERT_TRUE(ss_eq_ignore_case(SS("Hello"), SS("hello")));
+    ASSERT_TRUE(ss_eq_ignore_case(SS("HELLO"), SS("hello")));
+    ASSERT_TRUE(ss_eq_ignore_case(SS(""), SS("")));
+    ASSERT_TRUE(!ss_eq_ignore_case(SS("Hello"), SS("World")));
+    ASSERT_TRUE(!ss_eq_ignore_case(SS("Hello"), SS("Hell")));
+
+    // Digits/punctuation unchanged
+    ASSERT_TRUE(ss_eq_ignore_case(SS("test-123"), SS("TEST-123")));
+}
+
+CTEST(slice, cmp_ignore_case) {
+    ASSERT_TRUE(ss_cmp_ignore_case(SS("abc"), SS("ABC")) == 0);
+    ASSERT_TRUE(ss_cmp_ignore_case(SS("abc"), SS("abd")) < 0);
+    ASSERT_TRUE(ss_cmp_ignore_case(SS("abd"), SS("ABC")) > 0);
+    ASSERT_TRUE(ss_cmp_ignore_case(SS("ab"), SS("ABC")) < 0);
+    ASSERT_TRUE(ss_cmp_ignore_case(SS("abc"), SS("AB")) > 0);
+    ASSERT_TRUE(ss_cmp_ignore_case(SS(""), SS("")) == 0);
+}
+
+CTEST(slice, starts_with_ignore_case) {
+    StringSlice ss = SS("Hello, World!");
+    ASSERT_TRUE(ss_starts_with_ignore_case(ss, SS("hello")));
+    ASSERT_TRUE(ss_starts_with_ignore_case(ss, SS("HELLO, WORLD!")));
+    ASSERT_TRUE(ss_starts_with_ignore_case(ss, SS("")));
+    ASSERT_TRUE(!ss_starts_with_ignore_case(ss, SS("world")));
+    ASSERT_TRUE(!ss_starts_with_ignore_case(ss, SS("Hello, World! Extra")));
+
+    // cstr variant
+    ASSERT_TRUE(ss_starts_with_ignore_case_cstr(ss, "hello"));
+    ASSERT_TRUE(!ss_starts_with_ignore_case_cstr(ss, "world"));
+}
+
+CTEST(slice, ends_with_ignore_case) {
+    StringSlice ss = SS("Hello, World!");
+    ASSERT_TRUE(ss_ends_with_ignore_case(ss, SS("world!")));
+    ASSERT_TRUE(ss_ends_with_ignore_case(ss, SS("HELLO, WORLD!")));
+    ASSERT_TRUE(ss_ends_with_ignore_case(ss, SS("")));
+    ASSERT_TRUE(!ss_ends_with_ignore_case(ss, SS("hello")));
+    ASSERT_TRUE(!ss_ends_with_ignore_case(ss, SS("Extra Hello, World!")));
+
+    // cstr variant
+    ASSERT_TRUE(ss_ends_with_ignore_case_cstr(ss, "world!"));
+    ASSERT_TRUE(!ss_ends_with_ignore_case_cstr(ss, "hello"));
+}
+
 CTEST(slice, to_cstr) {
     StringSlice ss = ss_from_cstr("Cantami o diva del pelide Achille");
-    char* copy = ss_to_cstr_alloc(ss, &temp_allocator.base);
+    char *copy = ss_to_cstr_alloc(ss, &temp_allocator.base);
     ASSERT_TRUE(copy[ss.size] == '\0');
     ASSERT_TRUE(memcmp(ss.data, copy, ss.size) == 0);
     temp_reset();
+}
+
+CTEST(slice, foreach_split) {
+    const char *expected[] = {
+        "Cantami,", "o", "Diva,", "del", "Pelide", "Achille",
+    };
+    size_t i = 0;
+    ss_foreach_split(SS("Cantami, o Diva, del Pelide Achille"), ' ', word) {
+        ASSERT_TRUE(i < EXT_ARR_SIZE(expected));
+        ASSERT_TRUE(memcmp(word.data, expected[i], word.size) == 0);
+        i++;
+    }
+    ASSERT_TRUE(i == EXT_ARR_SIZE(expected));
+
+    // Single element (no delimiter found)
+    i = 0;
+    ss_foreach_split(SS("hello"), ' ', word) {
+        ASSERT_TRUE(ss_eq(word, SS("hello")));
+        i++;
+    }
+    ASSERT_TRUE(i == 1);
+}
+
+CTEST(slice, foreach_rsplit) {
+    const char *expected[] = {
+        "Achille", "Pelide", "del", "Diva,", "o", "Cantami,",
+    };
+    size_t i = 0;
+    ss_foreach_rsplit(SS("Cantami, o Diva, del Pelide Achille"), ' ', word) {
+        ASSERT_TRUE(i < EXT_ARR_SIZE(expected));
+        ASSERT_TRUE(memcmp(word.data, expected[i], word.size) == 0);
+        i++;
+    }
+    ASSERT_TRUE(i == EXT_ARR_SIZE(expected));
+
+    // Single element (no delimiter found)
+    i = 0;
+    ss_foreach_rsplit(SS("hello"), ' ', word) {
+        ASSERT_TRUE(ss_eq(word, SS("hello")));
+        i++;
+    }
+    ASSERT_TRUE(i == 1);
+}
+
+CTEST(slice, foreach_split_cstr) {
+    const char *expected[] = {
+        "Cantami",
+        "o Diva",
+        "del Pelide Achille",
+    };
+    size_t i = 0;
+    ss_foreach_split_cstr(SS("Cantami, o Diva, del Pelide Achille"), ", ", word) {
+        ASSERT_TRUE(i < EXT_ARR_SIZE(expected));
+        ASSERT_TRUE(memcmp(word.data, expected[i], word.size) == 0);
+        i++;
+    }
+    ASSERT_TRUE(i == EXT_ARR_SIZE(expected));
+
+    // Delimiter not found — yields entire string
+    i = 0;
+    ss_foreach_split_cstr(SS("hello"), ", ", word) {
+        ASSERT_TRUE(ss_eq(word, SS("hello")));
+        i++;
+    }
+    ASSERT_TRUE(i == 1);
+}
+
+CTEST(slice, foreach_rsplit_cstr) {
+    const char *expected[] = {
+        "del Pelide Achille",
+        "o Diva",
+        "Cantami",
+    };
+    size_t i = 0;
+    ss_foreach_rsplit_cstr(SS("Cantami, o Diva, del Pelide Achille"), ", ", word) {
+        ASSERT_TRUE(i < EXT_ARR_SIZE(expected));
+        ASSERT_TRUE(memcmp(word.data, expected[i], word.size) == 0);
+        i++;
+    }
+    ASSERT_TRUE(i == EXT_ARR_SIZE(expected));
+
+    // Delimiter not found — yields entire string
+    i = 0;
+    ss_foreach_rsplit_cstr(SS("hello"), ", ", word) {
+        ASSERT_TRUE(ss_eq(word, SS("hello")));
+        i++;
+    }
+    ASSERT_TRUE(i == 1);
+}
+
+CTEST(slice, find_char) {
+    StringSlice ss = ss_from_cstr("hello world");
+
+    ASSERT_TRUE(ss_find_char(ss, 'h', 0) == 0);
+    ASSERT_TRUE(ss_find_char(ss, 'o', 0) == 4);
+    ASSERT_TRUE(ss_find_char(ss, 'o', 5) == 7);
+    ASSERT_TRUE(ss_find_char(ss, 'z', 0) == -1);
+
+    // Offset past end
+    ASSERT_TRUE(ss_find_char(ss, 'h', ss.size) == -1);
+}
+
+CTEST(slice, rfind_char) {
+    StringSlice ss = ss_from_cstr("hello world");
+
+    ASSERT_TRUE(ss_rfind_char(ss, 'd', ss.size) == 10);
+    ASSERT_TRUE(ss_rfind_char(ss, 'o', ss.size) == 7);
+    ASSERT_TRUE(ss_rfind_char(ss, 'o', 5) == 4);
+    ASSERT_TRUE(ss_rfind_char(ss, 'z', ss.size) == -1);
+
+    // Offset at 0 — nothing to search
+    ASSERT_TRUE(ss_rfind_char(ss, 'h', 0) == -1);
+}
+
+CTEST(slice, find) {
+    StringSlice ss = ss_from_cstr("hello world hello");
+
+    // Basic forward find
+    ASSERT_TRUE(ss_find(ss, SS("hello"), 0) == 0);
+    ASSERT_TRUE(ss_find(ss, SS("world"), 0) == 6);
+
+    // With offset
+    ASSERT_TRUE(ss_find(ss, SS("hello"), 1) == 12);
+    ASSERT_TRUE(ss_find(ss, SS("hello"), 12) == 12);
+
+    // Not found
+    ASSERT_TRUE(ss_find(ss, SS("xyz"), 0) == -1);
+
+    // Offset past end
+    ASSERT_TRUE(ss_find(ss, SS("hello"), 13) == -1);
+
+    // Empty needle
+    ASSERT_TRUE(ss_find(ss, SS(""), 0) == 0);
+    ASSERT_TRUE(ss_find(ss, SS(""), 5) == 5);
+
+    // Needle larger than haystack
+    ASSERT_TRUE(ss_find(SS("hi"), SS("hello"), 0) == -1);
+}
+
+CTEST(slice, rfind) {
+    StringSlice ss = ss_from_cstr("hello world hello");
+
+    // Basic reverse find
+    ASSERT_TRUE(ss_rfind(ss, SS("hello"), ss.size) == 12);
+    ASSERT_TRUE(ss_rfind(ss, SS("world"), ss.size) == 6);
+
+    // With offset limiting search
+    ASSERT_TRUE(ss_rfind(ss, SS("hello"), 11) == 0);
+    ASSERT_TRUE(ss_rfind(ss, SS("hello"), 0) == 0);
+
+    // Not found
+    ASSERT_TRUE(ss_rfind(ss, SS("xyz"), ss.size) == -1);
+
+    // Empty needle
+    ASSERT_TRUE(ss_rfind(ss, SS(""), 5) == 5);
+
+    // Needle larger than haystack
+    ASSERT_TRUE(ss_rfind(SS("hi"), SS("hello"), 10) == -1);
+}
+
+CTEST(slice, find_cstr) {
+    StringSlice ss = ss_from_cstr("foo bar baz foo");
+
+    ASSERT_TRUE(ss_find_cstr(ss, "foo", 0) == 0);
+    ASSERT_TRUE(ss_find_cstr(ss, "foo", 1) == 12);
+    ASSERT_TRUE(ss_find_cstr(ss, "bar", 0) == 4);
+    ASSERT_TRUE(ss_find_cstr(ss, "quux", 0) == -1);
+}
+
+CTEST(slice, rfind_cstr) {
+    StringSlice ss = ss_from_cstr("foo bar baz foo");
+
+    ASSERT_TRUE(ss_rfind_cstr(ss, "foo", ss.size) == 12);
+    ASSERT_TRUE(ss_rfind_cstr(ss, "foo", 11) == 0);
+    ASSERT_TRUE(ss_rfind_cstr(ss, "bar", ss.size) == 4);
+    ASSERT_TRUE(ss_rfind_cstr(ss, "quux", ss.size) == -1);
+}
+
+CTEST(slice, basename) {
+    // Simple absolute path
+    ASSERT_TRUE(ss_eq(ss_basename(SS("/usr/local/bin/test")), SS("test")));
+    // Relative path
+    ASSERT_TRUE(ss_eq(ss_basename(SS("src/main.c")), SS("main.c")));
+    // Trailing slash
+    ASSERT_TRUE(ss_eq(ss_basename(SS("/usr/local/")), SS("local")));
+    // No separator — returns whole string
+    ASSERT_TRUE(ss_eq(ss_basename(SS("hello.txt")), SS("hello.txt")));
+    // Root
+    ASSERT_TRUE(ss_basename(SS("/")).size == 0);
+    // Multiple trailing slashes
+    ASSERT_TRUE(ss_eq(ss_basename(SS("/usr/local///")), SS("local")));
+
+#ifdef EXT_WINDOWS
+    // Windows-style backslash separators
+    ASSERT_TRUE(ss_eq(ss_basename(SS("C:\\Users\\test\\file.txt")), SS("file.txt")));
+    ASSERT_TRUE(ss_eq(ss_basename(SS("C:\\Users\\test\\")), SS("test")));
+    // Mixed separators
+    ASSERT_TRUE(ss_eq(ss_basename(SS("C:\\Users/test/file.txt")), SS("file.txt")));
+#endif
+}
+
+CTEST(slice, dirname) {
+    // Simple absolute path
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("/usr/local/bin/test")), SS("/usr/local/bin")));
+    // Single level
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("/test")), SS("/")));
+    // Trailing slash
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("/usr/local/")), SS("/usr")));
+    // No separator — returns empty
+    ASSERT_TRUE(ss_dirname(SS("hello.txt")).size == 0);
+    // Root
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("/")), SS("/")));
+    // Relative path
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("src/main.c")), SS("src")));
+
+#ifdef EXT_WINDOWS
+    // Windows-style backslash separators
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("C:\\Users\\test\\file.txt")), SS("C:\\Users\\test")));
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("C:\\file.txt")), SS("C:")));
+    // Mixed separators
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("C:\\Users/test/file.txt")), SS("C:\\Users/test")));
+#endif
+}
+
+CTEST(slice, extension) {
+    // Normal file extension
+    ASSERT_TRUE(ss_eq(ss_extension(SS("/path/to/file.txt")), SS(".txt")));
+    // Multiple dots
+    ASSERT_TRUE(ss_eq(ss_extension(SS("archive.tar.gz")), SS(".gz")));
+    // No extension
+    ASSERT_TRUE(ss_extension(SS("/path/to/Makefile")).size == 0);
+    // Dotfile (no extension)
+    ASSERT_TRUE(ss_extension(SS("/home/user/.gitignore")).size == 0);
+    // Dotfile with extension
+    ASSERT_TRUE(ss_eq(ss_extension(SS(".config.json")), SS(".json")));
+    // Trailing slash, no ext
+    ASSERT_TRUE(ss_extension(SS("/path/to/dir/")).size == 0);
+
+#ifdef EXT_WINDOWS
+    // Windows-style paths
+    ASSERT_TRUE(ss_eq(ss_extension(SS("C:\\Users\\test\\file.txt")), SS(".txt")));
+    ASSERT_TRUE(ss_extension(SS("C:\\Users\\test\\Makefile")).size == 0);
+#endif
+}
+
+CTEST(sb, append_path) {
+    StringBuffer sb = {0};
+
+    // Append to empty buffer
+    sb_append_path_cstr(&sb, "usr");
+    ASSERT_TRUE(memcmp(sb.items, "usr", sb.size) == 0);
+
+    // Append with separator insertion
+    sb_append_path_cstr(&sb, "local");
+    ASSERT_TRUE(memcmp(sb.items, "usr/local", sb.size) == 0);
+
+    // Append when buffer already ends with separator
+    sb_append_char(&sb, '/');
+    sb_append_path_cstr(&sb, "bin");
+    ASSERT_TRUE(memcmp(sb.items, "usr/local/bin", sb.size) == 0);
+
+    sb_free(&sb);
+
+    // StringSlice variant
+    StringBuffer sb2 = {0};
+    sb_append_path(&sb2, SS("home"));
+    sb_append_path(&sb2, SS("user"));
+    ASSERT_TRUE(memcmp(sb2.items, "home/user", sb2.size) == 0);
+    sb_free(&sb2);
+
+#ifdef EXT_WINDOWS
+    // Windows-style: backslash at end should not get an extra separator
+    {
+        StringBuffer sb3 = {0};
+        sb_append_cstr(&sb3, "C:\\Users\\");
+        sb_append_path_cstr(&sb3, "test");
+        ASSERT_TRUE(memcmp(sb3.items, "C:\\Users\\test", sb3.size) == 0);
+        sb_free(&sb3);
+    }
+#endif
 }
 
 typedef struct {
@@ -923,10 +1371,10 @@ typedef struct {
 } IntEntry;
 
 typedef struct {
-    IntEntry* entries;
-    size_t* hashes;
+    IntEntry *entries;
+    size_t *hashes;
     size_t size, capacity;
-    Allocator* allocator;
+    Allocator *allocator;
 } IntMap;
 
 CTEST(hmap, get_put) {
@@ -939,13 +1387,13 @@ CTEST(hmap, get_put) {
     hmap_put(&map, 2, 100);
     ASSERT_TRUE(map.size == 22);
 
-    IntEntry* entry;
+    IntEntry *entry;
     hmap_get(&map, 2, &entry);
     ASSERT_TRUE(entry != NULL);
     ASSERT_TRUE(entry->value = 100);
     entry->value += 50;
 
-    IntEntry* entry2;
+    IntEntry *entry2;
     hmap_get(&map, 2, &entry2);
     ASSERT_TRUE(entry == entry2);
     ASSERT_TRUE(entry2->value == 150);
@@ -954,7 +1402,7 @@ CTEST(hmap, get_put) {
 }
 
 CTEST(hmap, delete) {
-    IntEntry* e;
+    IntEntry *e;
     IntMap map = {0};
 
     for(int i = 1; i < 50; i++) {
@@ -980,7 +1428,7 @@ CTEST(hmap, delete) {
     }
 
     for(int i = 2; i < 50; i++) {
-        IntEntry* e;
+        IntEntry *e;
         hmap_get(&map, i, &e);
         ASSERT_TRUE(e == NULL);
     }
@@ -998,7 +1446,7 @@ CTEST(hmap, clear) {
     hmap_clear(&map);
     ASSERT_TRUE(map.size == 0);
     for(int i = 0; i < 10; i++) {
-        IntEntry* e;
+        IntEntry *e;
         hmap_get(&map, i, &e);
         ASSERT_TRUE(e == NULL);
     }
@@ -1006,7 +1454,7 @@ CTEST(hmap, clear) {
     hmap_put(&map, 3, 100);
     ASSERT_TRUE(map.size == 1);
 
-    IntEntry* e;
+    IntEntry *e;
     hmap_get(&map, 3, &e);
     ASSERT_TRUE(e != NULL);
     ASSERT_TRUE(e->key == 3 && e->value == 100);
@@ -1023,7 +1471,7 @@ CTEST(hmap, iter) {
         hmap_put(&map, i, i * 10);
     }
     int i = 0;
-    for(IntEntry* it = hmap_begin(&map); it != hmap_end(&map); it = hmap_next(&map, it)) {
+    for(IntEntry *it = hmap_begin(&map); it != hmap_end(&map); it = hmap_next(&map, it)) {
         i++;
     }
     ASSERT_TRUE(i == 50);
@@ -1072,15 +1520,15 @@ CTEST(hmap, ctx_allocator) {
 }
 
 typedef struct {
-    const char* key;
+    const char *key;
     int value;
 } StrEntry;
 
 typedef struct {
-    StrEntry* entries;
-    size_t* hashes;
+    StrEntry *entries;
+    size_t *hashes;
     size_t capacity, size;
-    Allocator* allocator;
+    Allocator *allocator;
 } StrMap;
 
 CTEST(hmap, get_put_cstr) {
@@ -1093,18 +1541,18 @@ CTEST(hmap, get_put_cstr) {
     hmap_put_cstr(&map, "key 2", 100);
     ASSERT_TRUE(map.size == 22);
 
-    StrEntry* entry;
+    StrEntry *entry;
     ext_hmap_get_cstr(&map, "key 2", &entry);
     ASSERT_TRUE(entry != NULL);
     ASSERT_TRUE(entry->value == 100);
     entry->value += 50;
 
-    StrEntry* entry2;
+    StrEntry *entry2;
     hmap_get_cstr(&map, "key 2", &entry2);
     ASSERT_TRUE(entry == entry2);
     ASSERT_TRUE(entry2->value == 150);
 
-    StrEntry* entry3;
+    StrEntry *entry3;
     hmap_get_cstr(&map, "key 30", &entry3);
     ASSERT_TRUE(entry3 == NULL);
 
@@ -1113,7 +1561,7 @@ CTEST(hmap, get_put_cstr) {
 }
 
 CTEST(hmap, delete_cstr) {
-    StrEntry* e;
+    StrEntry *e;
     StrMap map = {0};
 
     for(int i = 1; i < 50; i++) {
@@ -1134,8 +1582,8 @@ CTEST(hmap, delete_cstr) {
         hmap_delete_cstr(&map, temp_sprintf("key %d", i));
     }
     for(int i = 2; i < 50; i++) {
-        StrEntry* e;
-        const char* key = temp_sprintf("key %d", i);
+        StrEntry *e;
+        const char *key = temp_sprintf("key %d", i);
         hmap_get_cstr(&map, key, &e);
         ASSERT_TRUE(e == NULL);
     }
@@ -1151,10 +1599,10 @@ typedef struct {
 } SliceEntry;
 
 typedef struct {
-    SliceEntry* entries;
-    size_t* hashes;
+    SliceEntry *entries;
+    size_t *hashes;
     size_t capacity, size;
-    Allocator* allocator;
+    Allocator *allocator;
 } SliceMap;
 
 CTEST(hmap, get_put_ss) {
@@ -1167,18 +1615,18 @@ CTEST(hmap, get_put_ss) {
     hmap_put_ss(&map, ss_from_cstr("key 2"), 100);
     ASSERT_TRUE(map.size == 22);
 
-    SliceEntry* entry;
+    SliceEntry *entry;
     ext_hmap_get_ss(&map, ss_from_cstr("key 2"), &entry);
     ASSERT_TRUE(entry != NULL);
     ASSERT_TRUE(entry->value == 100);
     entry->value += 50;
 
-    SliceEntry* entry2;
+    SliceEntry *entry2;
     hmap_get_ss(&map, ss_from_cstr("key 2"), &entry2);
     ASSERT_TRUE(entry == entry2);
     ASSERT_TRUE(entry2->value == 150);
 
-    SliceEntry* entry3;
+    SliceEntry *entry3;
     hmap_get_ss(&map, ss_from_cstr("key 30"), &entry3);
     ASSERT_TRUE(entry3 == NULL);
 
@@ -1187,7 +1635,7 @@ CTEST(hmap, get_put_ss) {
 }
 
 CTEST(hmap, delete_ss) {
-    SliceEntry* e;
+    SliceEntry *e;
     SliceMap map = {0};
 
     for(int i = 1; i < 50; i++) {
@@ -1208,7 +1656,7 @@ CTEST(hmap, delete_ss) {
         hmap_delete_ss(&map, ss_from_cstr(temp_sprintf("key %d", i)));
     }
     for(int i = 2; i < 50; i++) {
-        SliceEntry* e;
+        SliceEntry *e;
         hmap_get_ss(&map, ss_from_cstr(temp_sprintf("key %d", i)), &e);
         ASSERT_TRUE(e == NULL);
     }
@@ -1219,7 +1667,7 @@ CTEST(hmap, delete_ss) {
 }
 
 CTEST(defer, loop) {
-    char* str = ext_strdup("hello, world");
+    char *str = ext_strdup("hello, world");
     defer_loop((void)0, ext_free(str, 13)) {
         str[0] = 'H';
         str[7] = 'W';
@@ -1227,8 +1675,8 @@ CTEST(defer, loop) {
     }
 }
 
-static void sb_log(Ext_LogLevel lvl, void* data, const char* fmt, va_list ap) {
-    StringBuffer* sb = (StringBuffer*)data;
+static void sb_log(Ext_LogLevel lvl, void *data, const char *fmt, va_list ap) {
+    StringBuffer *sb = (StringBuffer *)data;
     switch(lvl) {
     case EXT_DEBUG:
         sb_append_cstr(sb, "[DEBUG] ");
@@ -1251,7 +1699,7 @@ static void sb_log(Ext_LogLevel lvl, void* data, const char* fmt, va_list ap) {
 CTEST(logging, log_level) {
     StringBuffer sb = {0};
     Context ctx = *ext_context;
-    ctx.log_data = (void*)&sb;
+    ctx.log_data = (void *)&sb;
     ctx.log_fn = &sb_log;
     push_context(&ctx);
 
@@ -1322,12 +1770,12 @@ CTEST(io, read_write_file) {
 }
 
 CTEST(io, read_line) {
-    const char* content[] = {
+    const char *content[] = {
         "Cantami, o Diva,\n",
         "Del Pelide Achille\n",
     };
 
-    FILE* f = fopen("./test/out.txt", "rb");
+    FILE *f = fopen("./test/out.txt", "rb");
     ASSERT_TRUE(f != NULL);
 
     int line = 0;
@@ -1356,7 +1804,7 @@ CTEST(io, get_file_type) {
 }
 
 CTEST(io, get_cwd) {
-    char* cwd = get_cwd();
+    char *cwd = get_cwd();
     ASSERT_TRUE(cwd != NULL);
     ext_free(cwd, strlen(cwd) + 1);
 }

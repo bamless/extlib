@@ -9,13 +9,13 @@
 #define EXTLIB_IMPL
 #include "../extlib.h"
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     if(argc <= 1) {
         fprintf(stderr, "Usage: %s FILE\n", argv[0]);
         return 1;
     }
 
-    char* filename = argv[1];
+    char *filename = argv[1];
     StringBuffer sb = {0};
     if(!read_file(filename, &sb)) return 1;
 

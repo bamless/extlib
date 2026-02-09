@@ -16,7 +16,7 @@
 
 #define shift(argc, argv) ((argc)--, *(argv)++)
 
-const char* symbols = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+const char *symbols = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
 
 typedef struct {
     StringSlice key;
@@ -24,28 +24,28 @@ typedef struct {
 } WordFreq;
 
 typedef struct {
-    WordFreq* entries;
-    size_t* hashes;
+    WordFreq *entries;
+    size_t *hashes;
     size_t size, capacity;
-    Allocator* allocator;
+    Allocator *allocator;
 } WordMap;
 
 typedef struct {
-    WordFreq* items;
+    WordFreq *items;
     size_t size, capacity;
-    Allocator* allocator;
+    Allocator *allocator;
 } WordArray;
 
 static bool reverse;
 
-static int qsort_cmp(const void* a, const void* b) {
+static int qsort_cmp(const void *a, const void *b) {
     const WordFreq *e1 = a, *e2 = b;
     if(e1->value < e2->value) return reverse ? -1 : 1;
     if(e1->value > e2->value) return reverse ? 1 : -1;
     return 0;
 }
 
-static void usage(const char* prog) {
+static void usage(const char *prog) {
     fprintf(stderr, "USAGE: %s [OPTIONS] [path]\n", prog);
     fprintf(stderr, "OPTIONS\n");
     fprintf(stderr,
@@ -54,13 +54,13 @@ static void usage(const char* prog) {
     fprintf(stderr, "  -r          print the statistics in reverse order (ascending)\n");
 }
 
-int main(int argc, char** argv) {
-    char* prog = shift(argc, argv);
+int main(int argc, char **argv) {
+    char *prog = shift(argc, argv);
     int hist = 0;
 
     int npos = 0;
     for(int i = 0; i < argc; i++) {
-        char* arg = argv[i];
+        char *arg = argv[i];
         if(strcmp("--", arg) == 0) {
             for(int j = i + 1; j < argc; j++) argv[npos++] = argv[j];
             break;
@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
             hist = HIST_DEF;
             if(i + 1 >= argc) break;  // last argument
 
-            char* endptr;
+            char *endptr;
             long ncols = strtol(argv[i + 1], &endptr, 10);
             if(*endptr != '\0') break;  // next argument is not an integer; stick with default cols
             i++;
@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
         StringSlice word = ss_split_once_ws(&file_slice);
         if(word.size == 0) continue;
 
-        WordFreq* e;
+        WordFreq *e;
         hmap_get_default_ss(&words_freq, word, 0, &e);
         ASSERT(e != NULL, "default entry shouldn't be NULL");
 

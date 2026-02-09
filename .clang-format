@@ -9,6 +9,7 @@ IndentWidth: 4
 MaxEmptyLinesToKeep: 1
 
 AlignConsecutiveMacros: true
+PointerAlignment: Right
 SpaceBeforeParens: Never
 
 IndentPPDirectives: None

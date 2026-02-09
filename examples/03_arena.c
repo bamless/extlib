@@ -13,7 +13,7 @@
 #ifndef EXTLIB_WASM
 #include <stdio.h>
 #else
-int printf(const char* fmt, ...);
+int printf(const char *fmt, ...);
 #endif
 
 #define EXTLIB_IMPL
@@ -21,7 +21,7 @@ int printf(const char* fmt, ...);
 
 Arena arena = make_arena();
 
-const char* prec[] = {
+const char *prec[] = {
     "+-",
     "*/",
 };
@@ -37,8 +37,8 @@ size_t get_prec(char op) {
 }
 
 typedef struct {
-    const char* src;
-    const char* ptr;
+    const char *src;
+    const char *ptr;
 } Src;
 
 typedef struct {
@@ -54,7 +54,7 @@ typedef struct Expr {
     } as;
 } Expr;
 
-void error(const Src* src, const char* msg) {
+void error(const Src *src, const char *msg) {
     int col = src->ptr - src->src;
     ASSERT(col >= 0, "negative column");
     printf("%d: ", col);
@@ -70,23 +70,23 @@ static int is_space(int c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r';
 }
 
-char advance(Src* src) {
+char advance(Src *src) {
     while(is_space(*src->ptr)) src->ptr++;
     return *src->ptr++;
 }
 
-char peek(const Src* src) {
+char peek(const Src *src) {
     Src s = *src;
     return advance(&s);
 }
 
-Expr* parse_bin_expr(Src* expr, size_t prec);
+Expr *parse_bin_expr(Src *expr, size_t prec);
 
-Expr* parse_lit(Src* src) {
+Expr *parse_lit(Src *src) {
     char c = advance(src);
 
     if(c == '(') {
-        Expr* e = parse_bin_expr(src, 0);
+        Expr *e = parse_bin_expr(src, 0);
         if(!e) return NULL;
 
         c = advance(src);
@@ -116,26 +116,26 @@ Expr* parse_lit(Src* src) {
         }
     }
 
-    Expr* lit = arena_push(&arena, Expr);
+    Expr *lit = arena_push(&arena, Expr);
     lit->kind = LIT;
     lit->as.lit = sign * val;
     return lit;
 }
 
-Expr* parse_bin_expr(Src* src, size_t prec) {
+Expr *parse_bin_expr(Src *src, size_t prec) {
     if(prec >= max_prec) return parse_lit(src);
 
-    Expr* l = parse_bin_expr(src, prec + 1);
+    Expr *l = parse_bin_expr(src, prec + 1);
     if(!l) return NULL;
 
     char op;
     while((op = peek(src)) && get_prec(op) == prec) {
         advance(src);
 
-        Expr* r = parse_bin_expr(src, prec + 1);
+        Expr *r = parse_bin_expr(src, prec + 1);
         if(!r) return NULL;
 
-        Expr* bin = arena_push(&arena, Expr);
+        Expr *bin = arena_push(&arena, Expr);
         bin->kind = BIN;
         bin->as.bin = (BinExpr){op, l, r};
         l = bin;
@@ -144,9 +144,9 @@ Expr* parse_bin_expr(Src* src, size_t prec) {
     return l;
 }
 
-Expr* parse_expr(const char* expr) {
+Expr *parse_expr(const char *expr) {
     Src src = {expr, expr};
-    Expr* res = parse_bin_expr(&src, 0);
+    Expr *res = parse_bin_expr(&src, 0);
     if(!res) return NULL;
 
     char c;
@@ -158,26 +158,32 @@ Expr* parse_expr(const char* expr) {
     return res;
 }
 
-double interpret_expr(const Expr* e) {
+double interpret_expr(const Expr *e) {
     ASSERT(e, "e is NULL");
     switch(e->kind) {
     case BIN: {
         double l = interpret_expr(e->as.bin.l);
         double r = interpret_expr(e->as.bin.r);
         switch(e->as.bin.op) {
-        case '+': return l + r;
-        case '-': return l - r;
-        case '*': return l * r;
-        case '/': return l / r;
-        default:  UNREACHABLE();
+        case '+':
+            return l + r;
+        case '-':
+            return l - r;
+        case '*':
+            return l * r;
+        case '/':
+            return l / r;
+        default:
+            UNREACHABLE();
         }
     }
-    case LIT: return e->as.lit;
+    case LIT:
+        return e->as.lit;
     }
     UNREACHABLE();
 }
 
-void dump_expr(const Expr* e) {
+void dump_expr(const Expr *e) {
     ASSERT(e, "e is NULL");
     switch(e->kind) {
     case BIN:
@@ -195,8 +201,8 @@ void dump_expr(const Expr* e) {
 
 #ifdef EXTLIB_WASM
 // Export function in wasm to pase & evaluate an expression (see 03_arena.html)
-double eval_expr(char* src) {
-    Expr* expr = parse_expr(src);
+double eval_expr(char *src) {
+    Expr *expr = parse_expr(src);
     if(!expr) {
         arena_reset(&arena);
         return 0.0 / 0.0;  // NaN
@@ -207,13 +213,13 @@ double eval_expr(char* src) {
     return res;
 }
 #else
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     if(argc < 2) {
         fprintf(stderr, "%s expression\n", argv[0]);
         return 1;
     }
 
-    Expr* expr = parse_expr(argv[1]);
+    Expr *expr = parse_expr(argv[1]);
     if(!expr) {
         arena_destroy(&arena);
         return 1;

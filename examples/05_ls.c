@@ -14,16 +14,16 @@
 
 #define shift(argc, argv) ((argc)--, *(argv)++)
 
-static bool list_dir(const char* dir, bool all, bool recursive) {
+static bool list_dir(const char *dir, bool all, bool recursive) {
     Paths paths = {0};
     if(!read_dir(dir, &paths)) return false;
 
     bool ok = true;
-    array_foreach(char*, it, &paths) {
+    array_foreach(char *, it, &paths) {
         if(!all && **it == '.') continue;
-        void* temp = temp_checkpoint();
+        void *temp = temp_checkpoint();
 
-        char* full;
+        char *full;
         if(dir[strlen(dir) - 1] == '/') {
             full = temp_sprintf("%s%s", dir, *it);
         } else {
@@ -42,20 +42,20 @@ static bool list_dir(const char* dir, bool all, bool recursive) {
     return ok;
 }
 
-static void usage(const char* prog) {
+static void usage(const char *prog) {
     fprintf(stderr, "USAGE: %s [OPTIONS] path...\n", prog);
     fprintf(stderr, "OPTIONS\n");
     fprintf(stderr, "  -R recurse into directories\n");
     fprintf(stderr, "  -a shows hidden 'dot' files\n");
 }
 
-int main(int argc, char** argv) {
-    char* prog = shift(argc, argv);
+int main(int argc, char **argv) {
+    char *prog = shift(argc, argv);
     bool all = false, recursive = false;
 
     int npos = 0;
     for(int i = 0; i < argc; i++) {
-        char* arg = argv[i];
+        char *arg = argv[i];
         if(strcmp("--", arg) == 0) {
             for(int j = i + 1; j < argc; j++) argv[npos++] = argv[j];
             break;
@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        char* flags = arg + 1;
+        char *flags = arg + 1;
         while(*flags) {
             switch(*flags++) {
             case 'R':
@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
         int res = 0;
         bool print_header = argc > 1;
         while(argc) {
-            const char* path = shift(argc, argv);
+            const char *path = shift(argc, argv);
             if(print_header) printf("%s:\n", path);
             if(!list_dir(path, all, recursive)) res = 1;
             if(argc > 0) printf("\n");

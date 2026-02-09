@@ -12,13 +12,13 @@
 #include "../extlib.h"
 
 typedef struct {
-    StringSlice* items;
+    StringSlice *items;
     size_t size, capacity;
-    Allocator* allocator;
+    Allocator *allocator;
 } Lines;
 
-static int qsort_cmp(const void* a, const void* b) {
-    return ss_cmp(ss_trim(*(StringSlice*)a), ss_trim(*(StringSlice*)b));
+static int qsort_cmp(const void *a, const void *b) {
+    return ss_cmp(ss_trim(*(StringSlice *)a), ss_trim(*(StringSlice *)b));
 }
 
 int main(void) {
@@ -30,7 +30,7 @@ int main(void) {
     if(res < 0) return 1;
 
     StringSlice ss = sb_to_ss(file);
-    while(ss.size > 0) {
+    while(ss.size) {
         StringSlice line = ss_split_once(&ss, '\n');
         if(ss_trim(line).size == 0) continue;
         ext_array_push(&lines, line);
@@ -38,7 +38,7 @@ int main(void) {
 
     qsort(lines.items, lines.size, sizeof(*lines.items), qsort_cmp);
     array_foreach(StringSlice, line, &lines) {
-        printf(SS_Fmt"\n", SS_Arg(*line));
+        printf(SS_Fmt "\n", SS_Arg(*line));
     }
 
     array_free(&lines);

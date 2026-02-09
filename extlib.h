@@ -1,5 +1,5 @@
 /**
- * extlib v1.2.1 - c extended library
+ * extlib v1.3.0 - c extended library
  *
  * Single-header-file library that provides functionality that extends the standard c library.
  * Features:
@@ -43,11 +43,21 @@
  *
  *  Changelog:
  *
+ *  v1.3.0:
+ *      - New `StringSlice` functions: `ss_strip_prefix`, `ss_strip_suffix` (and `_cstr`
+ *        variants), `ss_eq_ignore_case`, `ss_cmp_ignore_case`, `ss_starts_with_ignore_case`,
+ *        `ss_ends_with_ignore_case` (and `_cstr` variants), `ss_substr`
+ *      - New path manipulation functions: `ss_basename`, `ss_dirname`, `ss_extension`,
+ *        `sb_append_path` (and `_cstr` variant). Handles both `/` and `\` on Windows
+ *      - New `StringBuffer` functions: `sb_to_upper`, `sb_to_lower`, `sb_reverse`
+ *      - Added missing shorthand aliases for `ss_foreach_split_cstr` and
+ *        `ss_foreach_rsplit_cstr`
+ *
  *  v1.2.1:
  *      - Added `arena_push` and `arena_pop` macros
  *      - Renamed `DEFER_LOOP` to `defer_loop`. Old version is mantained for backwards compatibility
  *      - Removed unused defines
- *  
+ *
  *  v1.2.0:
  *      - Added `EXT_DEBUG` logging level
  *      - Minor `Ext_Arena` redesign
@@ -325,7 +335,7 @@ void assert(int c);  // TODO: are we sure we want to require wasm embedder to pr
 // }
 // ```
 #define ext_defer_loop(begin, end) for(int i__ = ((begin), 0); i__ != 1; i__ = ((end), 1))
-#define EXT_DEFER_LOOP ext_defer_loop
+#define EXT_DEFER_LOOP             ext_defer_loop
 
 // Assigns passed in value to variable, and jumps to label.
 //
@@ -719,12 +729,12 @@ typedef struct Ext_Arena {
 // Arena def_arena = make_arena();
 // ```
 // See `Ext_Arena` struct for all available options
-#define ext_make_arena(...)                                                                \
-    ((Ext_Arena) {                                                                         \
-        .base = {ext__arena_alloc_wrap_, ext__arena_realloc_wrap_, ext__arena_free_wrap_}, \
-        .alignment = EXT_DEFAULT_ALIGNMENT, .page_size = EXT_ARENA_PAGE_SZ,                \
-        __VA_ARGS__                                                                        \
-    })
+#define ext_make_arena(...)                                                 \
+    ((Ext_Arena){.base = {ext__arena_alloc_wrap_, ext__arena_realloc_wrap_, \
+                          ext__arena_free_wrap_},                           \
+                 .alignment = EXT_DEFAULT_ALIGNMENT,                        \
+                 .page_size = EXT_ARENA_PAGE_SZ,                            \
+                 __VA_ARGS__})
 
 #define ext_arena_push(a, T)              ext_arena_alloc(a, sizeof(T))
 #define ext_arena_push_array(a, T, n)     ext_arena_alloc(a, sizeof(T) * (n))
@@ -1033,6 +1043,12 @@ typedef struct {
 
 // Replaces all characters appearing in `to_replace` with `replacement`.
 void ext_sb_replace(Ext_StringBuffer *sb, size_t start, const char *to_replace, char replacement);
+// Converts all characters in the buffer to uppercase in-place
+void ext_sb_to_upper(Ext_StringBuffer *sb);
+// Converts all characters in the buffer to lowercase in-place
+void ext_sb_to_lower(Ext_StringBuffer *sb);
+// Reverses the string buffer in-place
+void ext_sb_reverse(Ext_StringBuffer *sb);
 // Transforms the string buffer to a cstring, by appending NUL and shrinking it to fit its size.
 // The string buffer is reset after this operation.
 // BEWARE: you still need to free the returned string with the stringbuffer's allocator after this
@@ -1048,13 +1064,40 @@ int ext_sb_appendvf(Ext_StringBuffer *sb, const char *fmt, va_list ap);
 // SECTION: String slice
 //
 
-// A string slice can be viewed as a 'fat pointer' to a region of memory `data` of `size` bytes.
+// A string slice is an immutable 'fat pointer' to a region of memory `data` of `size` bytes.
 // It is reccomended to treat a string slice as a value struct, i.e. pass it and return it by value
 // unless you absolutely need to pass it as a pointer (for example, if you need to modify it).
 typedef struct {
     size_t size;
     const char *data;
 } Ext_StringSlice;
+
+// Iterates all the splits on `delim`
+//
+// USAGE:
+// ```
+// ss_foreach_split(SS("Cantami, o Diva"), ',', word) {
+//     ext_log(INFO, "Word: " SS_Fmt, SS_Arg(word));
+// }
+// ```
+#define ext_ss_foreach_split(ss, delim, var) \
+    for(StringSlice var, ss_iter_ = (ss);    \
+        ss_iter_.size && (var = ss_split_once(&ss_iter_, (delim)), true);)
+
+// Iterates, in reverse order, all the splits on `delim`
+#define ext_ss_foreach_rsplit(ss, delim, var) \
+    for(StringSlice var, ss_iter_ = (ss);     \
+        ss_iter_.size && (var = ss_rsplit_once(&ss_iter_, (delim)), true);)
+
+// Iterates all the split on `delim` cstring
+#define ext_ss_foreach_split_cstr(ss, delim, var) \
+    for(StringSlice var, ss_iter_ = (ss);         \
+        ss_iter_.size && (var = ss_split_once_cstr(&ss_iter_, (delim)), true);)
+
+// Iterates, in reverse order, all the split on `delim` cstring
+#define ext_ss_foreach_rsplit_cstr(ss, delim, var) \
+    for(StringSlice var, ss_iter_ = (ss);          \
+        ss_iter_.size && (var = ss_rsplit_once_cstr(&ss_iter_, (delim)), true);)
 
 // Format specifier for a string slice.
 //
@@ -1102,6 +1145,18 @@ Ext_StringSlice ext_ss_rsplit_once_ws(Ext_StringSlice *ss);
 Ext_StringSlice ext_ss_split_once_cstr(Ext_StringSlice *ss, const char *delim);
 // Same as `rsplit_once` but on a multi character delimiter
 Ext_StringSlice ext_ss_rsplit_once_cstr(Ext_StringSlice *ss, const char *delim);
+// Finds the first occurence of `c` starting from `offset`, or -1 if not found
+ptrdiff_t ext_ss_find_char(Ext_StringSlice ss, char c, size_t offset);
+// Like `ss_find_char`, but finds the last occurence starting from offset.
+ptrdiff_t ext_ss_rfind_char(Ext_StringSlice ss, char c, size_t offset);
+// Like `ss_find_char`, but finds the first occurence of `needle` starting from `offset`.
+ptrdiff_t ext_ss_find(Ext_StringSlice ss, Ext_StringSlice needle, size_t offset);
+// Like `ss_rfind_char`, but finds the last occurence of `needle` starting from `offset`.
+ptrdiff_t ext_ss_rfind(Ext_StringSlice ss, Ext_StringSlice needle, size_t offset);
+// Like `ss_find`, but takes a C string needle.
+ptrdiff_t ext_ss_find_cstr(Ext_StringSlice ss, const char *needle, size_t offset);
+// Like `ss_rfind`, but takes a C string needle.
+ptrdiff_t ext_ss_rfind_cstr(Ext_StringSlice ss, const char *needle, size_t offset);
 // Returns a new string slice with all white space removed from the start
 Ext_StringSlice ext_ss_trim_start(Ext_StringSlice ss);
 // Returns a new string slice with all white space removed from the end
@@ -1112,14 +1167,36 @@ Ext_StringSlice ext_ss_trim(Ext_StringSlice ss);
 Ext_StringSlice ext_ss_cut(Ext_StringSlice ss, size_t n);
 // Returns a new string slice of size `n`.
 Ext_StringSlice ext_ss_trunc(Ext_StringSlice ss, size_t n);
+// Returns a substring starting at `start` of at most `len` bytes
+Ext_StringSlice ext_ss_substr(Ext_StringSlice ss, size_t start, size_t len);
 // Returns true if the given string slice starts with `prefix`
 bool ext_ss_starts_with(Ext_StringSlice ss, Ext_StringSlice prefix);
-// Returns true if the given string slice ends with `prefix`
+// Returns true if the given string slice ends with `suffix`
 bool ext_ss_ends_with(Ext_StringSlice ss, Ext_StringSlice suffix);
+// Returns a new string slice with `prefix` removed, or the original slice if prefix is not present
+Ext_StringSlice ext_ss_strip_prefix(Ext_StringSlice ss, Ext_StringSlice prefix);
+// Returns a new string slice with `suffix` removed, or the original slice if suffix is not present
+Ext_StringSlice ext_ss_strip_suffix(Ext_StringSlice ss, Ext_StringSlice suffix);
+// Like `ss_strip_prefix`, but takes a C string prefix
+Ext_StringSlice ext_ss_strip_prefix_cstr(Ext_StringSlice ss, const char *prefix);
+// Like `ss_strip_suffix`, but takes a C string suffix
+Ext_StringSlice ext_ss_strip_suffix_cstr(Ext_StringSlice ss, const char *suffix);
 // memcompares two string slices
 int ext_ss_cmp(Ext_StringSlice s1, Ext_StringSlice s2);
 // Returns true if the two string slices are equal
 bool ext_ss_eq(Ext_StringSlice s1, Ext_StringSlice s2);
+// Returns true if the two string slices are equal, ignoring ASCII case
+bool ext_ss_eq_ignore_case(Ext_StringSlice a, Ext_StringSlice b);
+// Case-insensitive comparison (returns <0, 0, >0 like memcmp)
+int ext_ss_cmp_ignore_case(Ext_StringSlice a, Ext_StringSlice b);
+// Returns true if the given string slice starts with `prefix`, ignoring ASCII case
+bool ext_ss_starts_with_ignore_case(Ext_StringSlice ss, Ext_StringSlice prefix);
+// Returns true if the given string slice ends with `suffix`, ignoring ASCII case
+bool ext_ss_ends_with_ignore_case(Ext_StringSlice ss, Ext_StringSlice suffix);
+// Like `ss_starts_with_ignore_case`, but takes a C string prefix
+bool ext_ss_starts_with_ignore_case_cstr(Ext_StringSlice ss, const char *prefix);
+// Like `ss_ends_with_ignore_case`, but takes a C string suffix
+bool ext_ss_ends_with_ignore_case_cstr(Ext_StringSlice ss, const char *suffix);
 // Creates a cstring from the string slice by allocating memory using the current context allocator,
 // NUL terminating it, and copying over its data.
 char *ext_ss_to_cstr(Ext_StringSlice ss);
@@ -1129,6 +1206,16 @@ char *ext_ss_to_cstr_temp(Ext_StringSlice ss);
 // Creates a cstring from the string slice by allocating memory using the provided allocator,
 // NUL terminating it, and copying over its data.
 char *ext_ss_to_cstr_alloc(Ext_StringSlice ss, Ext_Allocator *a);
+// Returns the filename component of `path` (after the last separator)
+Ext_StringSlice ext_ss_basename(Ext_StringSlice path);
+// Returns the directory component of `path` (before the last separator), or empty if none
+Ext_StringSlice ext_ss_dirname(Ext_StringSlice path);
+// Returns the file extension (including the dot), or empty if none
+Ext_StringSlice ext_ss_extension(Ext_StringSlice path);
+// Appends a path component to the buffer, inserting a separator if needed
+void ext_sb_append_path(Ext_StringBuffer *sb, Ext_StringSlice component);
+// Like `sb_append_path`, but takes a C string component
+void ext_sb_append_path_cstr(Ext_StringBuffer *sb, const char *component);
 
 // -----------------------------------------------------------------------------
 // SECTION: IO
@@ -2251,6 +2338,20 @@ char *ext_arena_vsprintf(Ext_Arena *a, const char *fmt, va_list ap) {
 // -----------------------------------------------------------------------------
 // SECTION: String buffer
 //
+#ifndef EXTLIB_NO_STD
+#include <ctype.h>
+#else
+static inline int isspace(int c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r';
+}
+static inline int toupper(int c) {
+    return (c >= 'a' && c <= 'z') ? c - ('a' - 'A') : c;
+}
+static inline int tolower(int c) {
+    return (c >= 'A' && c <= 'Z') ? c + ('a' - 'A') : c;
+}
+#endif  // EXTLIB_NO_STD
+
 void ext_sb_replace(Ext_StringBuffer *sb, size_t start, const char *to_replace, char replacment) {
     EXT_ASSERT(start < sb->size, "start out of bounds");
     size_t to_replace_len = strlen(to_replace);
@@ -2267,6 +2368,27 @@ void ext_sb_replace(Ext_StringBuffer *sb, size_t start, const char *to_replace, 
             sb->items[i] = replacment;
         }
 #endif
+    }
+}
+
+void ext_sb_to_upper(Ext_StringBuffer *sb) {
+    for(size_t i = 0; i < sb->size; i++) {
+        sb->items[i] = (char)toupper((unsigned char)sb->items[i]);
+    }
+}
+
+void ext_sb_to_lower(Ext_StringBuffer *sb) {
+    for(size_t i = 0; i < sb->size; i++) {
+        sb->items[i] = (char)tolower((unsigned char)sb->items[i]);
+    }
+}
+
+void ext_sb_reverse(Ext_StringBuffer *sb) {
+    for(size_t i = 0, j = sb->size; i < j; i++) {
+        j--;
+        char tmp = sb->items[i];
+        sb->items[i] = sb->items[j];
+        sb->items[j] = tmp;
     }
 }
 
@@ -2309,14 +2431,6 @@ int ext_sb_appendvf(Ext_StringBuffer *sb, const char *fmt, va_list ap) {
 // -----------------------------------------------------------------------------
 // SECTION: String slice
 //
-#ifndef EXTLIB_NO_STD
-#include <ctype.h>
-#else
-static inline int isspace(int c) {
-    return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r';
-}
-#endif  // EXTLIB_NO_STD
-
 Ext_StringSlice ext_ss_from(const void *mem, size_t size) {
     return (Ext_StringSlice){size, mem};
 }
@@ -2388,6 +2502,52 @@ Ext_StringSlice ext_ss_rsplit_once_cstr(Ext_StringSlice *ss, const char *delim) 
     split.data -= max_len;
 
     return split;
+}
+
+ptrdiff_t ext_ss_find_char(Ext_StringSlice ss, char c, size_t offset) {
+    for(size_t i = offset; i < ss.size; i++) {
+        if(ss.data[i] == c) return i;
+    }
+    return -1;
+}
+
+ptrdiff_t ext_ss_rfind_char(Ext_StringSlice ss, char c, size_t offset) {
+    size_t start = offset < ss.size ? offset : ss.size;
+    for(size_t i = start; i > 0; i--) {
+        if(ss.data[i - 1] == c) return (ptrdiff_t)(i - 1);
+    }
+    return -1;
+}
+
+ptrdiff_t ext_ss_find(Ext_StringSlice ss, Ext_StringSlice needle, size_t offset) {
+    if(needle.size == 0) return offset <= ss.size ? (ptrdiff_t)offset : -1;
+    if(needle.size > ss.size) return -1;
+    for(size_t i = offset; i + needle.size <= ss.size; i++) {
+        if(memcmp(ss.data + i, needle.data, needle.size) == 0) return i;
+    }
+    return -1;
+}
+
+ptrdiff_t ext_ss_rfind(Ext_StringSlice ss, Ext_StringSlice needle, size_t offset) {
+    if(needle.size == 0) {
+        size_t pos = offset < ss.size ? offset : ss.size;
+        return pos;
+    }
+    if(needle.size > ss.size) return -1;
+    size_t last = ss.size - needle.size;
+    size_t start = offset < last ? offset : last;
+    for(size_t i = start + 1; i > 0; i--) {
+        if(memcmp(ss.data + i - 1, needle.data, needle.size) == 0) return i - 1;
+    }
+    return -1;
+}
+
+ptrdiff_t ext_ss_find_cstr(Ext_StringSlice ss, const char *needle, size_t offset) {
+    return ext_ss_find(ss, ext_ss_from_cstr(needle), offset);
+}
+
+ptrdiff_t ext_ss_rfind_cstr(Ext_StringSlice ss, const char *needle, size_t offset) {
+    return ext_ss_rfind(ss, ext_ss_from_cstr(needle), offset);
 }
 
 static bool any_match(char c, const char *set, size_t set_len) {
@@ -2476,6 +2636,10 @@ Ext_StringSlice ext_ss_trunc(Ext_StringSlice ss, size_t n) {
     return ss;
 }
 
+Ext_StringSlice ext_ss_substr(Ext_StringSlice ss, size_t start, size_t len) {
+    return ext_ss_trunc(ext_ss_cut(ss, start), len);
+}
+
 bool ext_ss_starts_with(Ext_StringSlice ss, Ext_StringSlice prefix) {
     return prefix.size <= ss.size && memcmp(ss.data, prefix.data, prefix.size) == 0;
 }
@@ -2485,6 +2649,24 @@ bool ext_ss_ends_with(Ext_StringSlice ss, Ext_StringSlice suffix) {
            memcmp(&ss.data[ss.size - suffix.size], suffix.data, suffix.size) == 0;
 }
 
+Ext_StringSlice ext_ss_strip_prefix(Ext_StringSlice ss, Ext_StringSlice prefix) {
+    if(ext_ss_starts_with(ss, prefix)) return ext_ss_cut(ss, prefix.size);
+    return ss;
+}
+
+Ext_StringSlice ext_ss_strip_suffix(Ext_StringSlice ss, Ext_StringSlice suffix) {
+    if(ext_ss_ends_with(ss, suffix)) return ext_ss_trunc(ss, ss.size - suffix.size);
+    return ss;
+}
+
+Ext_StringSlice ext_ss_strip_prefix_cstr(Ext_StringSlice ss, const char *prefix) {
+    return ext_ss_strip_prefix(ss, ext_ss_from_cstr(prefix));
+}
+
+Ext_StringSlice ext_ss_strip_suffix_cstr(Ext_StringSlice ss, const char *suffix) {
+    return ext_ss_strip_suffix(ss, ext_ss_from_cstr(suffix));
+}
+
 int ext_ss_cmp(Ext_StringSlice s1, Ext_StringSlice s2) {
     size_t min_sz = s1.size < s2.size ? s1.size : s2.size;
     return memcmp(s1.data, s2.data, min_sz);
@@ -2492,6 +2674,53 @@ int ext_ss_cmp(Ext_StringSlice s1, Ext_StringSlice s2) {
 
 bool ext_ss_eq(Ext_StringSlice s1, Ext_StringSlice s2) {
     return s1.size == s2.size && memcmp(s1.data, s2.data, s1.size) == 0;
+}
+
+bool ext_ss_eq_ignore_case(Ext_StringSlice a, Ext_StringSlice b) {
+    if(a.size != b.size) return false;
+    for(size_t i = 0; i < a.size; i++) {
+        if(tolower((unsigned char)a.data[i]) != tolower((unsigned char)b.data[i])) return false;
+    }
+    return true;
+}
+
+int ext_ss_cmp_ignore_case(Ext_StringSlice a, Ext_StringSlice b) {
+    size_t min_sz = a.size < b.size ? a.size : b.size;
+    for(size_t i = 0; i < min_sz; i++) {
+        int ca = tolower((unsigned char)a.data[i]);
+        int cb = tolower((unsigned char)b.data[i]);
+        if(ca != cb) return ca - cb;
+    }
+    if(a.size < b.size) return -1;
+    if(a.size > b.size) return 1;
+    return 0;
+}
+
+bool ext_ss_starts_with_ignore_case(Ext_StringSlice ss, Ext_StringSlice prefix) {
+    if(prefix.size > ss.size) return false;
+    for(size_t i = 0; i < prefix.size; i++) {
+        if(tolower((unsigned char)ss.data[i]) != tolower((unsigned char)prefix.data[i]))
+            return false;
+    }
+    return true;
+}
+
+bool ext_ss_ends_with_ignore_case(Ext_StringSlice ss, Ext_StringSlice suffix) {
+    if(suffix.size > ss.size) return false;
+    size_t offset = ss.size - suffix.size;
+    for(size_t i = 0; i < suffix.size; i++) {
+        if(tolower((unsigned char)ss.data[offset + i]) != tolower((unsigned char)suffix.data[i]))
+            return false;
+    }
+    return true;
+}
+
+bool ext_ss_starts_with_ignore_case_cstr(Ext_StringSlice ss, const char *prefix) {
+    return ext_ss_starts_with_ignore_case(ss, ext_ss_from_cstr(prefix));
+}
+
+bool ext_ss_ends_with_ignore_case_cstr(Ext_StringSlice ss, const char *suffix) {
+    return ext_ss_ends_with_ignore_case(ss, ext_ss_from_cstr(suffix));
 }
 
 char *ext_ss_to_cstr(Ext_StringSlice ss) {
@@ -2507,6 +2736,72 @@ char *ext_ss_to_cstr_alloc(Ext_StringSlice ss, Ext_Allocator *a) {
     memcpy(res, ss.data, ss.size);
     res[ss.size] = '\0';
     return res;
+}
+
+static bool ext__is_path_sep(char c) {
+#ifdef EXT_WINDOWS
+    return c == '/' || c == '\\';
+#else
+    return c == '/';
+#endif
+}
+
+Ext_StringSlice ext_ss_basename(Ext_StringSlice path) {
+    // Strip trailing separators
+    while(path.size > 0 && ext__is_path_sep(path.data[path.size - 1])) {
+        path.size--;
+    }
+    // Find last separator
+    for(size_t i = path.size; i > 0; i--) {
+        if(ext__is_path_sep(path.data[i - 1])) {
+            return ext_ss_cut(path, i);
+        }
+    }
+    return path;
+}
+
+Ext_StringSlice ext_ss_dirname(Ext_StringSlice path) {
+    // Strip trailing separators (but keep at least one char for root paths)
+    size_t end = path.size;
+    while(end > 1 && ext__is_path_sep(path.data[end - 1])) {
+        end--;
+    }
+    // Find last separator
+    for(size_t i = end; i > 0; i--) {
+        if(ext__is_path_sep(path.data[i - 1])) {
+            // Strip trailing separators from result, but keep at least one for root "/"
+            size_t dir_end = i - 1;
+            while(dir_end > 0 && ext__is_path_sep(path.data[dir_end - 1])) {
+                dir_end--;
+            }
+            if(dir_end == 0) dir_end = 1; /* root "/" */
+            return ext_ss_trunc(path, dir_end);
+        }
+    }
+    return (Ext_StringSlice){0, path.data};
+}
+
+Ext_StringSlice ext_ss_extension(Ext_StringSlice path) {
+    Ext_StringSlice base = ext_ss_basename(path);
+    for(size_t i = base.size; i > 0; i--) {
+        if(base.data[i - 1] == '.') {
+            // Dotfile (e.g. ".gitignore") with no other dot — no extension
+            if(i - 1 == 0) return (Ext_StringSlice){0, base.data + base.size};
+            return ext_ss_cut(base, i - 1);
+        }
+    }
+    return (Ext_StringSlice){0, base.data + base.size};
+}
+
+void ext_sb_append_path(Ext_StringBuffer *sb, Ext_StringSlice component) {
+    if(sb->size > 0 && !ext__is_path_sep(sb->items[sb->size - 1])) {
+        ext_sb_append_char(sb, '/');
+    }
+    ext_sb_append(sb, component.data, component.size);
+}
+
+void ext_sb_append_path_cstr(Ext_StringBuffer *sb, const char *component) {
+    ext_sb_append_path(sb, ext_ss_from_cstr(component));
 }
 
 // -----------------------------------------------------------------------------
@@ -2747,7 +3042,6 @@ exit:
     return res;
 }
 
-// Deletes a directory recursively (i.e. even if not empty)
 bool ext_delete_dir_recursively(const char *path) {
     Ext_FileType type = ext_get_file_type(path);
     if(type != EXT_FILE_DIR) {
@@ -3289,40 +3583,69 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define sb_reserve       ext_sb_reserve
 #define sb_reserve_exact ext_sb_reserve_exact
 #define sb_replace       ext_sb_replace
+#define sb_to_upper      ext_sb_to_upper
+#define sb_to_lower      ext_sb_to_lower
+#define sb_reverse       ext_sb_reverse
 #define sb_to_cstr       ext_sb_to_cstr
 #ifndef EXTLIB_NO_STD
 #define sb_appendf  ext_sb_appendf
 #define sb_appendvf ext_sb_appendvf
 #endif  // EXTLIB_NO_STD
+#define sb_append_path      ext_sb_append_path
+#define sb_append_path_cstr ext_sb_append_path_cstr
 
-#define StringSlice         Ext_StringSlice
-#define SS_Fmt              Ext_SS_Fmt
-#define SS_Arg              Ext_SS_Arg
-#define SS                  Ext_SS
-#define sb_to_ss            ext_sb_to_ss
-#define ss_from             ext_ss_from
-#define ss_from_cstr        ext_ss_from_cstr
-#define ss_split_once       ext_ss_split_once
-#define ss_rsplit_once      ext_ss_rsplit_once
-#define ss_split_once_any   ext_ss_split_once_any
-#define ss_rsplit_once_any  ext_ss_rsplit_once_any
-#define ss_split_once_ws    ext_ss_split_once_ws
-#define ss_rsplit_once_ws   ext_ss_rsplit_once_ws
-#define ss_split_once_cstr  ext_ss_split_once_cstr
-#define ss_rsplit_once_cstr ext_ss_rsplit_once_cstr
-#define ss_split_once_ws    ext_ss_split_once_ws
-#define ss_trim_start       ext_ss_trim_start
-#define ss_cut              ext_ss_cut
-#define ss_trunc            ext_ss_trunc
-#define ss_starts_with      ext_ss_starts_with
-#define ss_ends_with        ext_ss_ends_with
-#define ss_trim_end         ext_ss_trim_end
-#define ss_trim             ext_ss_trim
-#define ss_cmp              ext_ss_cmp
-#define ss_eq               ext_ss_eq
-#define ss_to_cstr          ext_ss_to_cstr
-#define ss_to_cstr_temp     ext_ss_to_cstr_temp
-#define ss_to_cstr_alloc    ext_ss_to_cstr_alloc
+#define StringSlice                     Ext_StringSlice
+#define ss_foreach_split                ext_ss_foreach_split
+#define ss_foreach_rsplit               ext_ss_foreach_rsplit
+#define ss_foreach_split_cstr           ext_ss_foreach_split_cstr
+#define ss_foreach_rsplit_cstr          ext_ss_foreach_rsplit_cstr
+#define SS_Fmt                          Ext_SS_Fmt
+#define SS_Arg                          Ext_SS_Arg
+#define SS                              Ext_SS
+#define sb_to_ss                        ext_sb_to_ss
+#define ss_from                         ext_ss_from
+#define ss_from_cstr                    ext_ss_from_cstr
+#define ss_split_once                   ext_ss_split_once
+#define ss_rsplit_once                  ext_ss_rsplit_once
+#define ss_split_once_any               ext_ss_split_once_any
+#define ss_rsplit_once_any              ext_ss_rsplit_once_any
+#define ss_split_once_ws                ext_ss_split_once_ws
+#define ss_rsplit_once_ws               ext_ss_rsplit_once_ws
+#define ss_split_once_cstr              ext_ss_split_once_cstr
+#define ss_rsplit_once_cstr             ext_ss_rsplit_once_cstr
+#define ss_split_once_ws                ext_ss_split_once_ws
+#define ss_find_char                    ext_ss_find_char
+#define ss_rfind_char                   ext_ss_rfind_char
+#define ss_find                         ext_ss_find
+#define ss_rfind                        ext_ss_rfind
+#define ss_find_cstr                    ext_ss_find_cstr
+#define ss_rfind_cstr                   ext_ss_rfind_cstr
+#define ss_trim_start                   ext_ss_trim_start
+#define ss_cut                          ext_ss_cut
+#define ss_trunc                        ext_ss_trunc
+#define ss_substr                       ext_ss_substr
+#define ss_starts_with                  ext_ss_starts_with
+#define ss_ends_with                    ext_ss_ends_with
+#define ss_strip_prefix                 ext_ss_strip_prefix
+#define ss_strip_suffix                 ext_ss_strip_suffix
+#define ss_strip_prefix_cstr            ext_ss_strip_prefix_cstr
+#define ss_strip_suffix_cstr            ext_ss_strip_suffix_cstr
+#define ss_trim_end                     ext_ss_trim_end
+#define ss_trim                         ext_ss_trim
+#define ss_cmp                          ext_ss_cmp
+#define ss_eq                           ext_ss_eq
+#define ss_eq_ignore_case               ext_ss_eq_ignore_case
+#define ss_cmp_ignore_case              ext_ss_cmp_ignore_case
+#define ss_starts_with_ignore_case      ext_ss_starts_with_ignore_case
+#define ss_ends_with_ignore_case        ext_ss_ends_with_ignore_case
+#define ss_starts_with_ignore_case_cstr ext_ss_starts_with_ignore_case_cstr
+#define ss_ends_with_ignore_case_cstr   ext_ss_ends_with_ignore_case_cstr
+#define ss_to_cstr                      ext_ss_to_cstr
+#define ss_to_cstr_temp                 ext_ss_to_cstr_temp
+#define ss_to_cstr_alloc                ext_ss_to_cstr_alloc
+#define ss_basename                     ext_ss_basename
+#define ss_dirname                      ext_ss_dirname
+#define ss_extension                    ext_ss_extension
 
 #ifndef EXTLIB_NO_STD
 #define Paths                  Ext_Paths
@@ -3330,6 +3653,7 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define FileType               Ext_FileType
 #define FILE_ERR               EXT_FILE_ERR
 #define FILE_REGULAR           EXT_FILE_REGULAR
+#define FILE_SYMLINK           EXT_FILE_SYMLINK
 #define FILE_DIR               EXT_FILE_DIR
 #define FILE_OTHER             EXT_FILE_OTHER
 #define read_file              ext_read_file
