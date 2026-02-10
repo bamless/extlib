@@ -1,5 +1,5 @@
 /**
- * extlib v1.3.0 - c extended library
+ * extlib v1.3.2 - c extended library
  *
  * Single-header-file library that provides functionality that extends the standard c library.
  * Features:
@@ -42,6 +42,9 @@
  *      SECTION: IO
  *
  *  Changelog:
+ *
+ *  v1.3.2:
+ *      - Fix build under win32 clang
  *
  *  v1.3.1:
  *      - Bugfixes in path handling functions, especially around win32 drive letters and UCN paths
