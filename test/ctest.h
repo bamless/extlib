@@ -271,6 +271,7 @@ void assert_dbl_compare(const char *cmp, double exp, double real, double tol, co
 #include <unistd.h>
 #elif defined(_WIN32)
 #include <io.h>
+#define STDOUT_FILENO 0
 #endif
 #include <stdint.h>
 #include <stdlib.h>
