@@ -30,5 +30,5 @@ jobs:
     - name: Test (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        clang -Wall -Wextra -Wno-override-init -std=c99 -ggdb -Wno-attributes -Wno-pragmas -I./test/ ./test/test.c -o test/test.exe
+        clang -Wall -Wextra -Wno-override-init -std=c99 -ggdb -Wno-attributes -Wno-pragmas -I./test/ -D_CRT_SECURE_NO_WARNINGS ./test/test.c -o test/test.exe
         ./test/test.exe
