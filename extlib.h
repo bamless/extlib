@@ -43,6 +43,11 @@
  *
  *  Changelog:
  *
+ *  v1.3.1:
+ *      - Bugfixes in path handling functions, especially around win32 drive letters and UCN paths
+ *      - Fixed `ext_new_array` macro
+ *      - Minor other bugfixes
+ *
  *  v1.3.0:
  *      - New `StringSlice` functions: `ss_strip_prefix`, `ss_strip_suffix` (and `_cstr`
  *        variants), `ss_eq_ignore_case`, `ss_cmp_ignore_case`, `ss_starts_with_ignore_case`,
@@ -522,7 +527,7 @@ typedef struct Ext_Allocator {
 // ext_clone:
 //   Creates a copy of the provided pointer using `ext_memdup`
 #define ext_new(T)                      ext_alloc(sizeof(T))
-#define ext_new_array(T, count)         ext_alloc(sizeof(int) * count)
+#define ext_new_array(T, count)         ext_alloc(sizeof(T) * count)
 #define ext_delete(T, ptr)              ext_free(ptr, sizeof(T))
 #define ext_delete_array(T, count, ptr) ext_free(ptr, sizeof(T) * count);
 #define ext_clone(T, ptr)               ext_memdup(ptr, sizeof(T));
@@ -1956,7 +1961,7 @@ static void *ext_default_realloc(Ext_Allocator *a, void *ptr, size_t old_size, s
 #else
     (void)ptr;
     (void)new_size;
-    return NULL
+    return NULL;
 #endif
 }
 
@@ -2668,8 +2673,9 @@ Ext_StringSlice ext_ss_strip_suffix_cstr(Ext_StringSlice ss, const char *suffix)
 }
 
 int ext_ss_cmp(Ext_StringSlice s1, Ext_StringSlice s2) {
-    size_t min_sz = s1.size < s2.size ? s1.size : s2.size;
-    return memcmp(s1.data, s2.data, min_sz);
+    if(s1.size < s2.size) return -1;
+    else if(s1.size > s2.size) return 1;
+    else return memcmp(s1.data, s2.data, s1.size);
 }
 
 bool ext_ss_eq(Ext_StringSlice s1, Ext_StringSlice s2) {
@@ -2746,12 +2752,75 @@ static bool ext__is_path_sep(char c) {
 #endif
 }
 
+#ifdef EXT_WINDOWS
+static bool ext__is_drive_letter(Ext_StringSlice path) {
+    if(path.size < 2) return false;
+    char c = path.data[0];
+    return ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) && path.data[1] == ':';
+}
+
+static bool ext__is_unc_path(Ext_StringSlice path) {
+    return path.size >= 2 && ext__is_path_sep(path.data[0]) && ext__is_path_sep(path.data[1]);
+}
+
+// Find the UNC root (e.g., server and share from path)
+// Returns the length of the root, or 0 if not a valid UNC path
+static size_t ext__unc_root_length(Ext_StringSlice path) {
+    if(!ext__is_unc_path(path)) return 0;
+    size_t pos = 2;  // Skip initial separators
+
+    // Special cases: extended-length and device paths
+    if(pos < path.size && path.data[pos] == '?') {
+        pos++;  // Skip '?'
+        if(pos < path.size && ext__is_path_sep(path.data[pos])) {
+            pos++;  // Skip separator
+            // Check for drive letter format
+            if(pos + 1 < path.size && path.data[pos + 1] == ':') {
+                return pos + 2;  // Include drive letter and colon
+            }
+            // Check for UNC format
+            if(pos + 3 < path.size && (path.data[pos] == 'U' || path.data[pos] == 'u') &&
+               (path.data[pos + 1] == 'N' || path.data[pos + 1] == 'n') &&
+               (path.data[pos + 2] == 'C' || path.data[pos + 2] == 'c') &&
+               ext__is_path_sep(path.data[pos + 3])) {
+                pos += 4;  // Skip "UNC" and separator
+                // Fall through to find server and share
+            }
+        }
+    } else if(pos < path.size && path.data[pos] == '.') {
+        pos++;  // Skip '.'
+        if(pos < path.size && ext__is_path_sep(path.data[pos])) {
+            pos++;  // Skip separator
+            // Device format - find next separator or end
+            while(pos < path.size && !ext__is_path_sep(path.data[pos])) {
+                pos++;
+            }
+            return pos;
+        }
+    }
+
+    // Standard UNC: find server name (up to next separator)
+    while(pos < path.size && !ext__is_path_sep(path.data[pos])) {
+        pos++;
+    }
+    if(pos >= path.size) return 0;  // Invalid: no share name
+
+    pos++;  // Skip separator after server
+
+    // Find share name (up to next separator or end)
+    while(pos < path.size && !ext__is_path_sep(path.data[pos])) {
+        pos++;
+    }
+
+    return pos;
+}
+#endif
+
 Ext_StringSlice ext_ss_basename(Ext_StringSlice path) {
     // Strip trailing separators
     while(path.size > 0 && ext__is_path_sep(path.data[path.size - 1])) {
         path.size--;
     }
-    // Find last separator
     for(size_t i = path.size; i > 0; i--) {
         if(ext__is_path_sep(path.data[i - 1])) {
             return ext_ss_cut(path, i);
@@ -2761,23 +2830,65 @@ Ext_StringSlice ext_ss_basename(Ext_StringSlice path) {
 }
 
 Ext_StringSlice ext_ss_dirname(Ext_StringSlice path) {
+#ifdef EXT_WINDOWS
+    size_t unc_root = ext__unc_root_length(path);
+    if(unc_root > 0) {
+        // Strip trailing separators after UNC root
+        size_t end = path.size;
+        while(end > unc_root && ext__is_path_sep(path.data[end - 1])) {
+            end--;
+        }
+        for(size_t i = end; i > unc_root; i--) {
+            if(ext__is_path_sep(path.data[i - 1])) {
+                size_t dir_end = i - 1;
+                while(dir_end > unc_root && ext__is_path_sep(path.data[dir_end - 1])) {
+                    dir_end--;
+                }
+                return ext_ss_trunc(path, dir_end);
+            }
+        }
+
+        // No separator after UNC root - return the root itself
+        return ext_ss_trunc(path, unc_root);
+    }
+#endif
+
     // Strip trailing separators (but keep at least one char for root paths)
     size_t end = path.size;
     while(end > 1 && ext__is_path_sep(path.data[end - 1])) {
         end--;
     }
+
     // Find last separator
     for(size_t i = end; i > 0; i--) {
         if(ext__is_path_sep(path.data[i - 1])) {
-            // Strip trailing separators from result, but keep at least one for root "/"
             size_t dir_end = i - 1;
             while(dir_end > 0 && ext__is_path_sep(path.data[dir_end - 1])) {
                 dir_end--;
             }
-            if(dir_end == 0) dir_end = 1; /* root "/" */
+
+            // Handle root paths
+            if(dir_end == 0) {
+                dir_end = 1;  // Unix root "/"
+            }
+#ifdef EXT_WINDOWS
+            // Windows: if we're at position 1 and have a drive letter, include the colon
+            else if(dir_end == 1 && path.size >= 2 && path.data[1] == ':') {
+                dir_end = 2;  // Windows drive "C:"
+            }
+#endif
             return ext_ss_trunc(path, dir_end);
         }
     }
+
+#ifdef EXT_WINDOWS
+    // If path is just a drive letter (e.g., "C:"), return it as-is
+    if(ext__is_drive_letter(path)) {
+        return ext_ss_trunc(path, 2);
+    }
+#endif
+
+    // No separator found
     return (Ext_StringSlice){0, path.data};
 }
 
@@ -2795,7 +2906,19 @@ Ext_StringSlice ext_ss_extension(Ext_StringSlice path) {
 
 void ext_sb_append_path(Ext_StringBuffer *sb, Ext_StringSlice component) {
     if(sb->size > 0 && !ext__is_path_sep(sb->items[sb->size - 1])) {
+#ifdef EXT_WINDOWS
+        // Use the same separator style as the existing path
+        char sep = '/';
+        for(size_t i = 0; i < sb->size; i++) {
+            if(sb->items[i] == '\\') {
+                sep = '\\';
+                break;
+            }
+        }
+        ext_sb_append_char(sb, sep);
+#else
         ext_sb_append_char(sb, '/');
+#endif
     }
     ext_sb_append(sb, component.data, component.size);
 }

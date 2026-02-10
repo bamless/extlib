@@ -1365,6 +1365,87 @@ CTEST(sb, append_path) {
 #endif
 }
 
+#ifdef EXT_WINDOWS
+CTEST(slice, windows_drive_letters) {
+    // Basic drive letter paths
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("C:\\file.txt")), SS("C:")));
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("D:\\dir\\file.txt")), SS("D:\\dir")));
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("C:/file.txt")), SS("C:")));
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("E:/dir/file.txt")), SS("E:/dir")));
+
+    // Drive letter only
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("C:")), SS("C:")));
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("D:")), SS("D:")));
+
+    // Drive letter with trailing separator
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("C:\\")), SS("C:")));
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("C:/")), SS("C:")));
+
+    // Multiple levels
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("C:\\Users\\test\\file.txt")), SS("C:\\Users\\test")));
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("C:\\Users\\test")), SS("C:\\Users")));
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("C:\\Users")), SS("C:")));
+}
+
+CTEST(slice, windows_unc_paths) {
+    // Standard UNC paths
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("\\\\server\\share\\file.txt")), SS("\\\\server\\share")));
+    ASSERT_TRUE(
+        ss_eq(ss_dirname(SS("\\\\server\\share\\dir\\file.txt")), SS("\\\\server\\share\\dir")));
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("\\\\server\\share")), SS("\\\\server\\share")));
+
+    // UNC path with trailing separator
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("\\\\server\\share\\")), SS("\\\\server\\share")));
+
+    // Extended-length paths with drive letters
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("\\\\?\\C:\\file.txt")), SS("\\\\?\\C:")));
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("\\\\?\\C:\\dir\\file.txt")), SS("\\\\?\\C:\\dir")));
+
+    // Device paths
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("\\\\.\\device\\file.txt")), SS("\\\\.\\device")));
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("\\\\.\\device")), SS("\\\\.\\device")));
+
+    // Basename should work correctly with UNC paths
+    ASSERT_TRUE(ss_eq(ss_basename(SS("\\\\server\\share\\file.txt")), SS("file.txt")));
+    ASSERT_TRUE(ss_eq(ss_basename(SS("\\\\server\\share")), SS("share")));
+}
+
+CTEST(slice, windows_mixed_separators) {
+    // Mixed forward and backslashes
+    ASSERT_TRUE(ss_eq(ss_dirname(SS("C:\\Users/test\\file.txt")), SS("C:\\Users/test")));
+    ASSERT_TRUE(ss_eq(ss_basename(SS("C:\\Users/test\\file.txt")), SS("file.txt")));
+
+    // Extension should work with mixed separators
+    ASSERT_TRUE(ss_eq(ss_extension(SS("C:\\Users/test\\file.txt")), SS(".txt")));
+}
+
+CTEST(sb, windows_path_separator_consistency) {
+    // Test that sb_append_path uses consistent separators
+    StringBuffer sb = {0};
+
+    // Start with backslash style
+    sb_append_cstr(&sb, "C:\\Windows");
+    sb_append_path_cstr(&sb, "System32");
+    ASSERT_TRUE(memcmp(sb.items, "C:\\Windows\\System32", sb.size) == 0);
+    sb_free(&sb);
+
+    // Start with forward slash style
+    StringBuffer sb2 = {0};
+    sb_append_cstr(&sb2, "C:/Windows");
+    sb_append_path_cstr(&sb2, "System32");
+    ASSERT_TRUE(memcmp(sb2.items, "C:/Windows/System32", sb2.size) == 0);
+    sb_free(&sb2);
+
+    // Multiple appends should maintain style
+    StringBuffer sb3 = {0};
+    sb_append_cstr(&sb3, "C:\\Users");
+    sb_append_path_cstr(&sb3, "test");
+    sb_append_path_cstr(&sb3, "Documents");
+    ASSERT_TRUE(memcmp(sb3.items, "C:\\Users\\test\\Documents", sb3.size) == 0);
+    sb_free(&sb3);
+}
+#endif
+
 typedef struct {
     int key;
     int value;
