@@ -96,7 +96,7 @@
 #endif  // EXTLIB_THREADSAFE
 #endif  // EXTLIB_WASM
 
-#if defined(_WIN32) && (defined(__WIN32__) || defined(WIN32) || defined(__MINGW32__))
+#if defined(_WIN32)
 #define EXT_WINDOWS
 #elif defined(__linux__)
 #define EXT_LINUX
