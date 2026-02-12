@@ -1,5 +1,5 @@
 /**
- * extlib v1.3.2 - c extended library
+ * extlib v1.4.0 - c extended library
  *
  * Single-header-file library that provides functionality that extends the standard c library.
  * Features:
@@ -42,6 +42,10 @@
  *      SECTION: IO
  *
  *  Changelog:
+ *
+ *  v1.4.0:
+ *      - Simplified arena allocator
+ *      - Fixes in temp allocator and arena allocator
  *
  *  v1.3.2:
  *      - Fix build under win32 clang
@@ -310,8 +314,20 @@ void assert(int c);  // TODO: are we sure we want to require wasm embedder to pr
 #endif  // ((defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)) || defined(__GNUC__))
         // && !defined(EXTLIB_NO_STD)
 
-// Returns the required offset to align `o` to `s` bytes
-#define EXT_ALIGN(o, s) (-(uintptr_t)(o) & (s - 1))
+// Returns the required padding to align `o` to `s` bytes. `s` must be a power of two.
+#define EXT_ALIGN_PAD(o, s) (-(uintptr_t)(o) & (s - 1))
+// Returns `o` rounded up to the next multiple of `s`. `s` must be a power of two.
+#define EXT_ALIGN_UP(o, s) (((uintptr_t)(o) + (s) - 1) & ~((uintptr_t)(s) - 1))
+
+// Specifies minimum alignment for a variable declaration (C99-compatible)
+#if defined(_MSC_VER)
+#define EXT_ALIGNAS(n) __declspec(align(n))
+#elif defined(__GNUC__) || defined(__clang__)
+#define EXT_ALIGNAS(n) __attribute__((aligned(n)))
+#else
+#define EXT_ALIGNAS(n)
+#endif
+
 // Returns the number of elements of a c array
 #define EXT_ARR_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
@@ -417,12 +433,6 @@ typedef struct Ext_Context {
 
 // The current context
 extern EXT_TLS Ext_Context *ext_context;
-
-// Simplifies pushing a context when the only thing you want to change is the allocator
-#define ext_push_context_allocator(allocator)               \
-    Ext_Context EXT_CONCAT_(ctx_, __LINE__) = *ext_context; \
-    EXT_CONCAT_(ctx_, __LINE__).alloc = (allocator);        \
-    ext_push_context(&EXT_CONCAT_(ctx_, __LINE__));
 
 // Pushes a new context to the stack, making it the current one
 void ext_push_context(Ext_Context *ctx);
@@ -662,32 +672,29 @@ char *ext_temp_vsprintf(const char *fmt, va_list ap);
 // An allocated chunk in the arena
 typedef struct Ext_ArenaPage {
     struct Ext_ArenaPage *next;
-    char *start, *end;
+    size_t size;
+    size_t base;
+    size_t pos;
     char data[];
 } Ext_ArenaPage;
 
 // Saved Arena state at a point in time
 typedef struct {
     Ext_ArenaPage *page;
-    char *page_start;
-    size_t allocated;
+    size_t pos;
 } Ext_ArenaCheckpoint;
 
 typedef enum {
     EXT_ARENA_NONE = 0,
-    // Forces the arena to behave like a stack allocator. The arena will
-    // check that frees are done only in LIFO order. If this is not the
-    // case, it will abort with an error.
-    EXT_ARENA_STACK_ALLOC = 1 << 0,
     // Zeroes the memory allocated by the arena.
-    EXT_ARENA_ZERO_ALLOC = 1 << 1,
+    EXT_ARENA_ZERO_ALLOC = 1 << 0,
     // The arena will not allocate pages larger than the configured page size, even if the user
     // requests an allocation that is larger than a single page.
     // If it can't allocate, aborts with an error.
-    EXT_ARENA_FIXED_PAGE_SIZE = 1 << 2,
+    EXT_ARENA_FIXED_PAGE_SIZE = 1 << 1,
     // Do not chain page chunks.
     // If allocations exceed a single page worth of memory, aborts with an error.
-    EXT_ARENA_NO_CHAIN = 1 << 3,
+    EXT_ARENA_NO_CHAIN = 1 << 2,
 } Ext_ArenaFlags;
 
 // Arena implements an arena allocator that allocates memory chunks inside larger pre-allocated
@@ -699,7 +706,7 @@ typedef enum {
 //
 // USAGE
 // ```c
-// Arena a = default_arena()       // creates an arena with default parameters
+// Arena a = make_arena()           // creates an arena with default parameters
 // a = make_arena(.alignment = 32) // or, initialize the arena with custom parameters
 //
 // // ... allocate memory, push it as context allocator, etc...
@@ -717,12 +724,10 @@ typedef struct Ext_Arena {
     // The alignment of the allocations returned by the arena. By default is
     // `EXT_DEFAULT_ALIGNMENT`.
     size_t alignment;
-    // The default page size of the arena. By default it's `EXT_ARENA_PAGE_SZ`.
+    // The page size of the arena. By default it's `EXT_ARENA_PAGE_SZ`.
     size_t page_size;
     // Arena flags. See `ArenaFlags` enum
     Ext_ArenaFlags flags;
-    // Currently allocated bytes in the arena
-    size_t allocated;
     // Private fields
     Ext_ArenaPage *first_page, *last_page;
 } Ext_Arena;
@@ -783,6 +788,8 @@ void ext_arena_rewind(Ext_Arena *a, Ext_ArenaCheckpoint checkpoint);
 void ext_arena_reset(Ext_Arena *a);
 // Frees all memory allocated in the arena and resets it.
 void ext_arena_destroy(Ext_Arena *a);
+// Gets the currently allocated bytes in the arena
+size_t ext_arena_get_allocated(const Ext_Arena *a);
 // Copies a cstring by allocating it in the arena
 char *ext_arena_strdup(Ext_Arena *a, const char *str);
 // Copies a memory region of `size` bytes by allocating it in the arena
@@ -1499,7 +1506,7 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
     do {                                                                                      \
         if((hmap)->entries) {                                                                 \
             size_t sz = ((hmap)->capacity + 2) * sizeof(*(hmap)->entries);                    \
-            size_t pad = EXT_ALIGN(sz, sizeof(*(hmap)->hashes));                              \
+            size_t pad = EXT_ALIGN_PAD(sz, sizeof(*(hmap)->hashes));                          \
             size_t totalsz = sz + pad + sizeof(*(hmap)->hashes) * ((hmap)->capacity + 2);     \
             ext_allocator_free((Ext_Allocator *)(hmap)->allocator, (hmap)->entries, totalsz); \
         }                                                                                     \
@@ -1919,7 +1926,7 @@ static void *ext_heap_start = (void *)__heap_base;
 #endif  // EXTLIB_WASM
 
 #ifndef EXT_DEFAULT_ALIGNMENT
-#define EXT_DEFAULT_ALIGNMENT (16)
+#define EXT_DEFAULT_ALIGNMENT 16
 #endif  // EXT_DEFAULT_ALIGNMENT
 EXT_STATIC_ASSERT(((EXT_DEFAULT_ALIGNMENT) & ((EXT_DEFAULT_ALIGNMENT)-1)) == 0,
                   "default alignment must be a power of 2");
@@ -1935,7 +1942,7 @@ static void *ext_default_alloc(Ext_Allocator *a, size_t size) {
     EXT_ASSERT(mem, "out of memory");
     return mem;
 #elif defined(EXTLIB_WASM)
-    size += EXT_ALIGN(size, EXT_DEFAULT_ALIGNMENT);
+    size = EXT_ALIGN_UP(size, EXT_DEFAULT_ALIGNMENT);
     char *mem_end = (char *)(__builtin_wasm_memory_size(0) << 16);
     if((char *)ext_heap_start + size > mem_end) {
         size_t pages = (size + 0xFFFFU) >> 16;  // round up
@@ -1993,7 +2000,7 @@ static void *ext_temp_alloc_wrap(Ext_Allocator *a, size_t size);
 static void *ext_temp_realloc_wrap(Ext_Allocator *a, void *ptr, size_t old_size, size_t new_size);
 static void ext_temp_free_wrap(Ext_Allocator *a, void *ptr, size_t size);
 
-static char ext_temp_mem[EXT_DEFAULT_TEMP_SIZE];
+EXT_ALIGNAS(EXT_DEFAULT_ALIGNMENT) static char ext_temp_mem[EXT_DEFAULT_TEMP_SIZE];
 EXT_TLS Ext_TempAllocator ext_temp_allocator = {
     {.alloc = ext_temp_alloc_wrap, .realloc = ext_temp_realloc_wrap, .free = ext_temp_free_wrap},
     .start = ext_temp_mem,
@@ -2026,29 +2033,29 @@ void ext_temp_set_mem(void *mem, size_t size) {
 }
 
 void *ext_temp_alloc(size_t size) {
-    size_t alignment = EXT_ALIGN(size, EXT_DEFAULT_ALIGNMENT);
-    intptr_t available = ext_temp_allocator.end - ext_temp_allocator.start - alignment;
-    if(available < (intptr_t)size) {
+    size = EXT_ALIGN_UP(size, EXT_DEFAULT_ALIGNMENT);
+    size_t available = ext_temp_allocator.end - ext_temp_allocator.start;
+    if(available < size) {
 #ifndef EXTLIB_NO_STD
         ext_log(EXT_ERROR,
-                "%s:%d: temp allocation failed: %zu bytes requested, %zd bytes "
+                "%s:%d: temp allocation failed: %zu bytes requested, %zu bytes "
                 "available",
-                __FILE__, __LINE__, size, available < 0 ? 0 : available);
+                __FILE__, __LINE__, size, available);
         abort();
 #else
         EXT_ASSERT(false, "temp allocation failed");
 #endif
     }
     void *p = ext_temp_allocator.start;
-    ext_temp_allocator.start += size + alignment;
+    ext_temp_allocator.start += size;
     return p;
 }
 
 void *ext_temp_realloc(void *ptr, size_t old_size, size_t new_size) {
-    ptrdiff_t alignment = EXT_ALIGN(old_size, EXT_DEFAULT_ALIGNMENT);
-    // Reallocating last allocated memory, can shrink page in-place
-    if(ext_temp_allocator.start - old_size - alignment == ptr) {
-        ext_temp_allocator.start -= old_size + alignment;
+    size_t aligned_old = EXT_ALIGN_UP(old_size, EXT_DEFAULT_ALIGNMENT);
+    // Reallocating last allocated memory, can shrink in-place
+    if(ext_temp_allocator.start - aligned_old == ptr) {
+        ext_temp_allocator.start -= aligned_old;
         return ext_temp_alloc(new_size);
     } else if(new_size > old_size) {
         void *new_ptr = ext_temp_alloc(new_size);
@@ -2064,8 +2071,9 @@ size_t ext_temp_available(void) {
 }
 
 void ext_temp_reset(void) {
-    ext_temp_allocator.start = ext_temp_allocator.mem;
-    ext_temp_allocator.end = (char *)ext_temp_allocator.mem + ext_temp_allocator.mem_size;
+    char *mem = ext_temp_allocator.mem;
+    ext_temp_allocator.start = mem + EXT_ALIGN_PAD(mem, EXT_DEFAULT_ALIGNMENT);
+    ext_temp_allocator.end = mem + ext_temp_allocator.mem_size;
 }
 
 void *ext_temp_checkpoint(void) {
@@ -2114,11 +2122,11 @@ char *ext_temp_vsprintf(const char *fmt, va_list ap) {
 // SECTION: Arena allocator
 //
 #ifndef EXT_ARENA_PAGE_SZ
-#define EXT_ARENA_PAGE_SZ EXT_KiB(4)
+#define EXT_ARENA_PAGE_SZ EXT_KiB(8)
 #endif  // EXT_ARENA_PAGE_SZ
 
 static Ext_ArenaPage *ext_arena_new_page(Ext_Arena *arena, size_t requested_size) {
-    size_t header_sz = sizeof(Ext_ArenaPage) + EXT_ALIGN(sizeof(Ext_ArenaPage), arena->alignment);
+    size_t header_sz = sizeof(Ext_ArenaPage) + (arena->alignment - 1);
     size_t actual_size = requested_size + header_sz;
 
     size_t page_size = arena->page_size;
@@ -2132,19 +2140,21 @@ static Ext_ArenaPage *ext_arena_new_page(Ext_Arena *arena, size_t requested_size
             abort();
 #else
             EXT_ASSERT(false, "requested size exceeds max allocatable size in page");
+            return NULL;
 #endif
         } else {
             page_size = actual_size;
         }
     }
 
-    Ext_ArenaPage *page = arena->page_allocator->alloc(arena->page_allocator, page_size);
+    Ext_ArenaPage *page = ext_allocator_alloc(arena->page_allocator, page_size);
     EXT_ASSERT(page, "out of memory");
     page->next = NULL;
+    page->base = 0;
     // Account for alignment of first allocation; the arena assumes every pointer
     // starts aligned to the arena's alignment.
-    page->start = page->data + EXT_ALIGN(page->data, arena->alignment);
-    page->end = (char *)page + page_size;
+    page->pos = EXT_ALIGN_PAD(page->data, arena->alignment);
+    page->size = page_size - sizeof(Ext_ArenaPage);
     return page;
 }
 
@@ -2161,63 +2171,70 @@ void ext__arena_free_wrap_(Ext_Allocator *a, void *ptr, size_t size) {
 }
 
 void *ext_arena_alloc(Ext_Arena *a, size_t size) {
+    size = EXT_ALIGN_UP(size, a->alignment);
+
     if(!a->last_page) {
-        EXT_ASSERT(a->first_page == NULL && a->allocated == 0, "should be first allocation");
-        EXT_ASSERT(((a->alignment) & (a->alignment - 1)) == 0, "aligment must be a power of 2");
+        EXT_ASSERT(a->first_page == NULL, "should be first allocation");
+        EXT_ASSERT(((a->alignment) & (a->alignment - 1)) == 0, "alignment must be a power of 2");
         if(!a->page_allocator) a->page_allocator = ext_context->alloc;
-        size += EXT_ALIGN(size, a->alignment);
         Ext_ArenaPage *page = ext_arena_new_page(a, size);
         a->first_page = page;
         a->last_page = page;
-    } else {
-        size += EXT_ALIGN(size, a->alignment);
     }
 
-    intptr_t available = a->last_page->end - a->last_page->start;
-    while(available < (intptr_t)size) {
+    size_t available = a->last_page->size - a->last_page->pos;
+    while(available < size) {
         Ext_ArenaPage *next_page = a->last_page->next;
+
         if(!next_page) {
             if(a->flags & EXT_ARENA_NO_CHAIN) {
 #ifndef EXTLIB_NO_STD
                 ext_log(EXT_ERROR, "Not enough space in arena: available %zu, requested %zu",
-                        (size_t)available, size);
+                        available, size);
                 abort();
 #else
                 EXT_ASSERT(false, "Not enough space in arena");
                 return NULL;
 #endif
             }
-            a->last_page->next = ext_arena_new_page(a, size);
-            a->last_page = a->last_page->next;
-            available = a->last_page->end - a->last_page->start;
+            Ext_ArenaPage *new_page = ext_arena_new_page(a, size);
+            new_page->base = a->last_page->base + a->last_page->pos;
+
+            a->last_page->next = new_page;
+            a->last_page = new_page;
+            available = a->last_page->size - a->last_page->pos;
             break;
         } else {
+            // Reset the page
+            next_page->base = a->last_page->base + a->last_page->pos;
+            next_page->pos = EXT_ALIGN_PAD(next_page->data, a->alignment);
+
+            available = next_page->size - next_page->pos;
             a->last_page = next_page;
-            available = next_page->end - next_page->start;
         }
     }
-    EXT_ASSERT(available >= (intptr_t)size, "Not enough space in arena");
 
-    void *p = a->last_page->start;
-    EXT_ASSERT(EXT_ALIGN(p, a->alignment) == 0, "Pointer is not aligned to the arena's alignment");
-    a->last_page->start += size;
-    a->allocated += size;
-    if(a->flags & EXT_ARENA_ZERO_ALLOC) {
-        memset(p, 0, size);
-    }
-    return p;
+    EXT_ASSERT(available >= size, "Not enough space in arena");
+
+    void *result = a->last_page->data + a->last_page->pos;
+    EXT_ASSERT(EXT_ALIGN_PAD(result, a->alignment) == 0,
+               "result not aligned to the arena's alignment");
+    a->last_page->pos += size;
+    if(a->flags & EXT_ARENA_ZERO_ALLOC) memset(result, 0, size);
+
+    return result;
 }
 
 void *ext_arena_realloc(Ext_Arena *a, void *ptr, size_t old_size, size_t new_size) {
-    EXT_ASSERT(EXT_ALIGN(ptr, a->alignment) == 0, "ptr is not aligned to the arena's alignment");
+    EXT_ASSERT(EXT_ALIGN_PAD(ptr, a->alignment) == 0, "ptr not aligned to the arena's alignment");
+
     Ext_ArenaPage *page = a->last_page;
     EXT_ASSERT(page, "No pages in arena");
 
-    size_t alignment = EXT_ALIGN(old_size, a->alignment);
-    if(page->start - old_size - alignment == ptr) {
+    size_t aligned_old = EXT_ALIGN_UP(old_size, a->alignment);
+    if(page->data + page->pos - aligned_old == ptr) {
         // Reallocating last allocated memory, can grow/shrink page in-place
-        page->start -= old_size + alignment;
-        a->allocated -= old_size + alignment;
+        page->pos -= aligned_old;
         void *new_ptr = ext_arena_alloc(a, new_size);
         // Can still get a different pointer in case the arena runs out of page space and needs to
         // allocate a brand new one. In this case we fallback on copying the data over.
@@ -2235,27 +2252,18 @@ void *ext_arena_realloc(Ext_Arena *a, void *ptr, size_t old_size, size_t new_siz
 void ext_arena_free(Ext_Arena *a, void *ptr, size_t size) {
     if(!ptr) return;
 
-    EXT_ASSERT(EXT_ALIGN(ptr, a->alignment) == 0, "ptr is not aligned to the arena's alignment");
+    EXT_ASSERT(EXT_ALIGN_PAD(ptr, a->alignment) == 0,
+               "ptr is not aligned to the arena's alignment");
+
     Ext_ArenaPage *page = a->last_page;
     EXT_ASSERT(page, "No pages in arena");
 
-    size += EXT_ALIGN(size, a->alignment);
-    if(page->start - size == ptr) {
+    size = EXT_ALIGN_UP(size, a->alignment);
+    if(page->data + page->pos - size == ptr) {
         // Deallocating last allocated memory, can shrink in-place
-        page->start -= size;
-        a->allocated -= size;
-        return;
-    }
-
-    // In stack allocator mode force LIFO order
-    if(a->flags & EXT_ARENA_STACK_ALLOC) {
-#ifndef EXTLIB_NO_STD
-        ext_log(EXT_ERROR, "Deallocating memory in non-LIFO order: got %p, expected %p", ptr,
-                (void *)(page->start - size));
-        abort();
-#else
-        EXT_ASSERT(false, "Deallocating memory in non-LIFO order");
-#endif
+        page->pos -= size;
+    } else {
+        // no-op
     }
 }
 
@@ -2266,8 +2274,7 @@ Ext_ArenaCheckpoint ext_arena_checkpoint(const Ext_Arena *a) {
     } else {
         return (Ext_ArenaCheckpoint){
             a->last_page,
-            a->last_page->start,
-            a->allocated,
+            a->last_page->pos,
         };
     }
 }
@@ -2277,36 +2284,30 @@ void ext_arena_rewind(Ext_Arena *a, Ext_ArenaCheckpoint checkpoint) {
         ext_arena_reset(a);
         return;
     }
-    checkpoint.page->start = checkpoint.page_start;
-    Ext_ArenaPage *page = checkpoint.page->next;
-    while(page) {
-        page->start = page->data + EXT_ALIGN(page->data, a->alignment);
-        page = page->next;
-    }
     a->last_page = checkpoint.page;
-    a->allocated = checkpoint.allocated;
+    a->last_page->pos = checkpoint.pos;
 }
 
 void ext_arena_reset(Ext_Arena *a) {
-    Ext_ArenaPage *page = a->first_page;
-    while(page) {
-        page->start = page->data + EXT_ALIGN(page->data, a->alignment);
-        page = page->next;
-    }
+    if(!a->first_page) return;
     a->last_page = a->first_page;
-    a->allocated = 0;
+    a->last_page->pos = EXT_ALIGN_PAD(a->last_page->data, a->alignment);
 }
 
 void ext_arena_destroy(Ext_Arena *a) {
     Ext_ArenaPage *page = a->first_page;
     while(page) {
         Ext_ArenaPage *next = page->next;
-        a->page_allocator->free(a->page_allocator, page, page->end - (char *)page);
+        ext_allocator_free(a->page_allocator, page, page->size + sizeof(Ext_ArenaPage));
         page = next;
     }
     a->first_page = NULL;
     a->last_page = NULL;
-    a->allocated = 0;
+}
+
+size_t ext_arena_get_allocated(const Ext_Arena *a) {
+    if(!a->first_page) return 0;
+    return a->last_page->base + a->last_page->pos;
 }
 
 char *ext_arena_strdup(Ext_Arena *a, const char *str) {
@@ -3411,7 +3412,7 @@ void ext_hmap_grow_(void **entries, size_t entries_sz, size_t **hashes, size_t *
                     Ext_Allocator **a) {
     size_t newcap = *cap ? (*cap + 1) * 2 : EXT_HMAP_INIT_CAPACITY;
     size_t newsz = (newcap + 1) * entries_sz;
-    size_t pad = EXT_ALIGN(newsz, sizeof(size_t));
+    size_t pad = EXT_ALIGN_PAD(newsz, sizeof(size_t));
     size_t totalsz = newsz + pad + sizeof(size_t) * (newcap + 1);
     if(!*a) *a = ext_context->alloc;
     void *newentries = ext_allocator_alloc(*a, totalsz);
@@ -3435,7 +3436,7 @@ void ext_hmap_grow_(void **entries, size_t entries_sz, size_t **hashes, size_t *
     }
     if(*entries) {
         size_t sz = (*cap + 2) * entries_sz;
-        size_t pad = EXT_ALIGN(sz, sizeof(size_t));
+        size_t pad = EXT_ALIGN_PAD(sz, sizeof(size_t));
         size_t totalsz = sz + pad + sizeof(size_t) * (*cap + 2);
         ext_allocator_free(*a, *entries, totalsz);
     }
@@ -3602,7 +3603,8 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define STATIC_ASSERT EXT_STATIC_ASSERT
 #define TODO          EXT_TODO
 #define DBG           EXT_DBG
-#define ALIGN         EXT_ALIGN
+#define ALIGN_PAD     EXT_ALIGN_PAD
+#define ALIGN_UP      EXT_ALIGN_UP
 #define ARR_SIZE      EXT_ARR_SIZE
 #define KiB           EXT_KiB
 #define MiB           EXT_MiB
@@ -3657,7 +3659,6 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #endif  // EXTLIB_NO_STD
 
 #define ArenaFlags            Ext_ArenaFlags
-#define ARENA_STACK_ALLOC     EXT_ARENA_STACK_ALLOC
 #define ARENA_ZERO_ALLOC      EXT_ARENA_ZERO_ALLOC
 #define ARENA_FIXED_PAGE_SIZE EXT_ARENA_FIXED_PAGE_SIZE
 #define ARENA_NO_CHAIN        EXT_ARENA_NO_CHAIN
@@ -3676,6 +3677,7 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define arena_rewind          ext_arena_rewind
 #define arena_reset           ext_arena_reset
 #define arena_destroy         ext_arena_destroy
+#define arena_get_allocated   ext_arena_get_allocated
 #define arena_strdup          ext_arena_strdup
 #define arena_memdup          ext_arena_memdup
 #ifndef EXTLIB_NO_STD
