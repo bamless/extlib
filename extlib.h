@@ -2295,11 +2295,9 @@ void ext_arena_reset(Ext_Arena *a) {
 }
 
 void ext_arena_destroy(Ext_Arena *a) {
-    Ext_ArenaPage *page = a->first_page;
-    while(page) {
-        Ext_ArenaPage *next = page->next;
+    for(Ext_ArenaPage *page = a->first_page, *next; page; page = next) {
+        next = page->next;
         ext_allocator_free(a->page_allocator, page, page->size + sizeof(Ext_ArenaPage));
-        page = next;
     }
     a->first_page = NULL;
     a->last_page = NULL;
