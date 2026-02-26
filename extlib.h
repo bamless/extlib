@@ -1,5 +1,5 @@
 /**
- * extlib v1.4.0 - c extended library
+ * extlib v1.4.1 - c extended library
  *
  * Single-header-file library that provides functionality that extends the standard c library.
  * Features:
@@ -43,6 +43,8 @@
  *
  *  Changelog:
  *
+ *  v1.4.1:
+ *      - Minor tweaks to allocation functions - move some of them to be `inline`
  *  v1.4.0:
  *      - Simplified arena allocator
  *      - Fixes in temp allocator and arena allocator
