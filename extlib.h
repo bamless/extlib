@@ -561,18 +561,9 @@ inline void *ext_allocator_realloc(Ext_Allocator *a, void *ptr, size_t old_sz, s
 inline void ext_allocator_free(Ext_Allocator *a, void *ptr, size_t size) {
     a->free(a, ptr, size);
 }
-char *ext_allocator_strdup(Ext_Allocator *a, const char *s);
-void *ext_allocator_memdup(Ext_Allocator *a, const void *mem, size_t size);
-// Backward compatibility: old _alloc suffix functions now use ext_allocator_* internally
-// Note: parameter order changed - allocator is now first parameter
-// DEPRECATED: Use ext_allocator_strdup and ext_allocator_memdup instead
-#define ext_strdup_alloc(s, a)         ext_allocator_strdup(a, s)
-#define ext_memdup_alloc(mem, size, a) ext_allocator_memdup(a, mem, size)
 
 // Allocation functions that use the current configured context to allocate, reallocate and free
 // memory.
-// It is reccomended to always use these functions instead of malloc/realloc/free when you need
-// memory to make the behaviour of your code configurable via the context.
 inline void *ext_alloc(size_t size) {
     return ext_allocator_alloc(ext_context->alloc, size);
 }
@@ -582,14 +573,36 @@ inline void *ext_realloc(void *ptr, size_t old_sz, size_t new_sz) {
 inline void ext_free(void *ptr, size_t size) {
     ext_allocator_free(ext_context->alloc, ptr, size);
 }
+
+// Copies a cstring by using the provided allocator
+char *ext_allocator_strdup(Ext_Allocator *a, const char *s) {
+    size_t len = strlen(s);
+    char *res = a->alloc(a, len + 1);
+    memcpy(res, s, len);
+    res[len] = '\0';
+    return res;
+}
+
+// Copies a memory region of `size` bytes by using the provided allocator
+void *ext_allocator_memdup(Ext_Allocator *a, const void *mem, size_t size) {
+    return memcpy(a->alloc(a, size), mem, size);
+}
+
 // Copies a cstring by using the current context allocator
 inline char *ext_strdup(const char *s) {
     return ext_allocator_strdup(ext_context->alloc, s);
 }
+
 // Copies a memory region of `size` bytes by using the current context allocator
 inline void *ext_memdup(const void *mem, size_t size) {
     return ext_allocator_memdup(ext_context->alloc, mem, size);
 }
+
+// Backward compatibility: old _alloc suffix functions now use ext_allocator_* internally
+// Note: parameter order changed - allocator is now first parameter
+// DEPRECATED: Use ext_allocator_strdup and ext_allocator_memdup instead
+#define ext_strdup_alloc(s, a)         ext_allocator_strdup(a, s)
+#define ext_memdup_alloc(mem, size, a) ext_allocator_memdup(a, mem, size)
 
 // A default allocator that uses malloc/realloc/free.
 // It is the allocator configured in the context at program start.
@@ -1683,7 +1696,7 @@ typedef int EXT_SIPHASH_2_4_can_only_be_used_in_64_bit_builds[sizeof(size_t) == 
                                  // do..while(0) and sizeof()==
 #endif
 
-static size_t ext_siphash_bytes_(const void *p, size_t len, size_t seed) {
+static inline size_t ext_siphash_bytes_(const void *p, size_t len, size_t seed) {
     unsigned char *d = (unsigned char *)p;
     size_t i, j;
     size_t v0, v1, v2, v3, data;
@@ -1905,20 +1918,11 @@ extern inline void *ext_alloc(size_t size);
 extern inline void *ext_realloc(void *ptr, size_t old_sz, size_t new_sz);
 extern inline void ext_free(void *ptr, size_t size);
 
+extern inline char *ext_allocator_strdup(Ext_Allocator *a, const char *s);
+extern inline void *ext_allocator_memdup(Ext_Allocator *a, const void *mem, size_t size);
+
 extern inline char *ext_strdup(const char *s);
 extern inline void *ext_memdup(const void *mem, size_t size);
-
-char *ext_allocator_strdup(Ext_Allocator *a, const char *s) {
-    size_t len = strlen(s);
-    char *res = a->alloc(a, len + 1);
-    memcpy(res, s, len);
-    res[len] = '\0';
-    return res;
-}
-
-void *ext_allocator_memdup(Ext_Allocator *a, const void *mem, size_t size) {
-    return memcpy(a->alloc(a, size), mem, size);
-}
 
 #ifdef EXTLIB_WASM
 extern char __heap_base[];
