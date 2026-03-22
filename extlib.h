@@ -366,7 +366,6 @@ void assert(int c);  // TODO: are we sure we want to require wasm embedder to pr
 // }
 // ```
 #define ext_defer_loop(begin, end) for(int i__ = ((begin), 0); i__ != 1; i__ = ((end), 1))
-#define EXT_DEFER_LOOP             ext_defer_loop
 
 // Assigns passed in value to variable, and jumps to label.
 //
@@ -604,12 +603,6 @@ inline char *ext_strdup(const char *s) {
 inline void *ext_memdup(const void *mem, size_t size) {
     return ext_allocator_memdup(ext_context->alloc, mem, size);
 }
-
-// Backward compatibility: old _alloc suffix functions now use ext_allocator_* internally
-// Note: parameter order changed - allocator is now first parameter
-// DEPRECATED: Use ext_allocator_strdup and ext_allocator_memdup instead
-#define ext_strdup_alloc(s, a)         ext_allocator_strdup(a, s)
-#define ext_memdup_alloc(mem, size, a) ext_allocator_memdup(a, mem, size)
 
 // A default allocator that uses malloc/realloc/free.
 // It is the allocator configured in the context at program start.
