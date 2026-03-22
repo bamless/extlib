@@ -121,8 +121,7 @@ int main(int argc, char **argv) {
         StringSlice word = ss_split_once_ws(&file_slice);
         if(word.size == 0) continue;
 
-        WordFreq *e;
-        hmap_get_default_ss(&words_freq, word, 0, &e);
+        WordFreq *e = hmap_getp_default_ss(&words_freq, word, 0);
         ASSERT(e != NULL, "default entry shouldn't be NULL");
 
         e->value++;
