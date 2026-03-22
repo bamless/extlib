@@ -1493,14 +1493,12 @@ CTEST(hmap, get_put) {
     hmap_put(&map, 2, 100);
     ASSERT_TRUE(map.size == 22);
 
-    IntEntry *entry;
-    hmap_get(&map, 2, &entry);
+    IntEntry *entry = hmap_get(&map, 2);
     ASSERT_TRUE(entry != NULL);
     ASSERT_TRUE(entry->value = 100);
     entry->value += 50;
 
-    IntEntry *entry2;
-    hmap_get(&map, 2, &entry2);
+    IntEntry *entry2 = hmap_get(&map, 2);
     ASSERT_TRUE(entry == entry2);
     ASSERT_TRUE(entry2->value == 150);
 
@@ -1515,17 +1513,17 @@ CTEST(hmap, delete) {
         hmap_put(&map, i, i * 10);
     }
 
-    hmap_get(&map, 1, &e);
+    e = hmap_get(&map, 1);
     ASSERT_TRUE(e != NULL);
     ASSERT_TRUE(e->value == 10);
 
     ASSERT_TRUE(map.size == 49);
     hmap_delete(&map, 1);
     ASSERT_TRUE(map.size == 48);
-    hmap_get(&map, 1, &e);
+    e = hmap_get(&map, 1);
     ASSERT_TRUE(e == NULL);
 
-    hmap_get(&map, 4, &e);
+    e = hmap_get(&map, 4);
     ASSERT_TRUE(e != NULL);
     ASSERT_TRUE(e->value == 40);
 
@@ -1534,8 +1532,7 @@ CTEST(hmap, delete) {
     }
 
     for(int i = 2; i < 50; i++) {
-        IntEntry *e;
-        hmap_get(&map, i, &e);
+        IntEntry *e = hmap_get(&map, i);
         ASSERT_TRUE(e == NULL);
     }
     ASSERT_TRUE(map.size == 0);
@@ -1552,16 +1549,14 @@ CTEST(hmap, clear) {
     hmap_clear(&map);
     ASSERT_TRUE(map.size == 0);
     for(int i = 0; i < 10; i++) {
-        IntEntry *e;
-        hmap_get(&map, i, &e);
+        IntEntry *e = hmap_get(&map, i);
         ASSERT_TRUE(e == NULL);
     }
 
     hmap_put(&map, 3, 100);
     ASSERT_TRUE(map.size == 1);
 
-    IntEntry *e;
-    hmap_get(&map, 3, &e);
+    IntEntry *e = hmap_get(&map, 3);
     ASSERT_TRUE(e != NULL);
     ASSERT_TRUE(e->key == 3 && e->value == 100);
 
@@ -1647,19 +1642,16 @@ CTEST(hmap, get_put_cstr) {
     hmap_put_cstr(&map, "key 2", 100);
     ASSERT_TRUE(map.size == 22);
 
-    StrEntry *entry;
-    ext_hmap_get_cstr(&map, "key 2", &entry);
+    StrEntry *entry = hmap_get_cstr(&map, "key 2");
     ASSERT_TRUE(entry != NULL);
     ASSERT_TRUE(entry->value == 100);
     entry->value += 50;
 
-    StrEntry *entry2;
-    hmap_get_cstr(&map, "key 2", &entry2);
+    StrEntry *entry2 = hmap_get_cstr(&map, "key 2");
     ASSERT_TRUE(entry == entry2);
     ASSERT_TRUE(entry2->value == 150);
 
-    StrEntry *entry3;
-    hmap_get_cstr(&map, "key 30", &entry3);
+    StrEntry *entry3 = hmap_get_cstr(&map, "key 30");
     ASSERT_TRUE(entry3 == NULL);
 
     hmap_free(&map);
@@ -1674,23 +1666,22 @@ CTEST(hmap, delete_cstr) {
         hmap_put_cstr(&map, temp_sprintf("key %d", i), i * 10);
     }
 
-    hmap_get_cstr(&map, "key 1", &e);
+    e = hmap_get_cstr(&map, "key 1");
     ASSERT_TRUE(e != NULL);
     ASSERT_TRUE(e->value == 10);
 
     ASSERT_TRUE(map.size == 49);
     hmap_delete_cstr(&map, "key 1");
     ASSERT_TRUE(map.size == 48);
-    hmap_get_cstr(&map, "key 1", &e);
+    e = hmap_get_cstr(&map, "key 1");
     ASSERT_TRUE(e == NULL);
 
     for(int i = 2; i < 50; i++) {
         hmap_delete_cstr(&map, temp_sprintf("key %d", i));
     }
     for(int i = 2; i < 50; i++) {
-        StrEntry *e;
         const char *key = temp_sprintf("key %d", i);
-        hmap_get_cstr(&map, key, &e);
+        StrEntry *e = hmap_get_cstr(&map, key);
         ASSERT_TRUE(e == NULL);
     }
     ASSERT_TRUE(map.size == 0);
@@ -1721,19 +1712,16 @@ CTEST(hmap, get_put_ss) {
     hmap_put_ss(&map, ss_from_cstr("key 2"), 100);
     ASSERT_TRUE(map.size == 22);
 
-    SliceEntry *entry;
-    ext_hmap_get_ss(&map, ss_from_cstr("key 2"), &entry);
+    SliceEntry *entry = hmap_get_ss(&map, ss_from_cstr("key 2"));
     ASSERT_TRUE(entry != NULL);
     ASSERT_TRUE(entry->value == 100);
     entry->value += 50;
 
-    SliceEntry *entry2;
-    hmap_get_ss(&map, ss_from_cstr("key 2"), &entry2);
+    SliceEntry *entry2 = hmap_get_ss(&map, ss_from_cstr("key 2"));
     ASSERT_TRUE(entry == entry2);
     ASSERT_TRUE(entry2->value == 150);
 
-    SliceEntry *entry3;
-    hmap_get_ss(&map, ss_from_cstr("key 30"), &entry3);
+    SliceEntry *entry3 = hmap_get_ss(&map, ss_from_cstr("key 30"));
     ASSERT_TRUE(entry3 == NULL);
 
     hmap_free(&map);
@@ -1748,28 +1736,235 @@ CTEST(hmap, delete_ss) {
         hmap_put_ss(&map, ss_from_cstr(temp_sprintf("key %d", i)), i * 10);
     }
 
-    hmap_get_ss(&map, ss_from_cstr("key 1"), &e);
+    e = hmap_get_ss(&map, ss_from_cstr("key 1"));
     ASSERT_TRUE(e != NULL);
     ASSERT_TRUE(e->value == 10);
 
     ASSERT_TRUE(map.size == 49);
     hmap_delete_ss(&map, ss_from_cstr("key 1"));
     ASSERT_TRUE(map.size == 48);
-    hmap_get_ss(&map, ss_from_cstr("key 1"), &e);
+    e = hmap_get_ss(&map, ss_from_cstr("key 1"));
     ASSERT_FALSE(e != NULL);
 
     for(int i = 2; i < 50; i++) {
         hmap_delete_ss(&map, ss_from_cstr(temp_sprintf("key %d", i)));
     }
     for(int i = 2; i < 50; i++) {
-        SliceEntry *e;
-        hmap_get_ss(&map, ss_from_cstr(temp_sprintf("key %d", i)), &e);
+        SliceEntry *e = hmap_get_ss(&map, ss_from_cstr(temp_sprintf("key %d", i)));
         ASSERT_TRUE(e == NULL);
     }
     ASSERT_TRUE(map.size == 0);
 
     hmap_free(&map);
     temp_reset();
+}
+
+CTEST(hmap, get_bytes) {
+    HashMap(int, int) map = {0};
+
+    // Empty map must return NULL without touching a NULL entries pointer.
+    ASSERT_TRUE(hmap_get(&map, 1) == NULL);
+
+    for(int i = 1; i <= 22; i++) {
+        hmap_put(&map, i, i * 10);
+    }
+
+    // Hit: correct key and value, inline mutation visible on next lookup.
+    ASSERT_TRUE(hmap_get(&map, 5) != NULL);
+    ASSERT_TRUE(hmap_get(&map, 5)->key == 5);
+    ASSERT_TRUE(hmap_get(&map, 5)->value == 50);
+    hmap_get(&map, 5)->value = 99;
+    ASSERT_TRUE(hmap_get(&map, 5)->value == 99);
+
+    // Same key returns the same pointer (stable storage, no realloc triggered here).
+    // Note: two get calls must not share an expression — both write to the tmp slot.
+    void *p3a = hmap_get(&map, 3);
+    void *p3b = hmap_get(&map, 3);
+    ASSERT_TRUE(p3a == p3b);
+
+    // Miss on absent key.
+    ASSERT_TRUE(hmap_get(&map, 100) == NULL);
+
+    hmap_free(&map);
+}
+
+CTEST(hmap, get_bytes_tombstones) {
+    HashMap(int, int) map = {0};
+
+    for(int i = 1; i <= 50; i++) {
+        hmap_put(&map, i, i * 10);
+    }
+
+    // Create tombstones in the lower half.
+    for(int i = 1; i <= 25; i++) {
+        hmap_delete(&map, i);
+    }
+
+    // Deleted entries are not found (probe must continue past tombstones).
+    for(int i = 1; i <= 25; i++) {
+        ASSERT_TRUE(hmap_get(&map, i) == NULL);
+    }
+
+    // Entries whose probe chain passes through tombstones are still found.
+    for(int i = 26; i <= 50; i++) {
+        ASSERT_TRUE(hmap_get(&map, i) != NULL);
+        ASSERT_TRUE(hmap_get(&map, i)->value == i * 10);
+    }
+
+    hmap_free(&map);
+}
+
+CTEST(hmap, get_default_bytes) {
+    HashMap(int, int) map = {0};
+
+    // First access on an empty map: triggers grow then inserts with default.
+    hmap_get_default(&map, 1, 100)->value += 5;
+    ASSERT_TRUE(map.size == 1);
+
+    // Second access: key already present, default is ignored, value unchanged.
+    ASSERT_TRUE(hmap_get_default(&map, 1, 0)->value == 105);
+    ASSERT_TRUE(map.size == 1);
+
+    // Accessing a key with a large default does not overwrite the stored value.
+    (void)hmap_get_default(&map, 1, 999);
+    ASSERT_TRUE(hmap_get(&map, 1)->value == 105);
+
+    // Insert enough keys to trigger at least one grow.
+    for(int i = 2; i <= 22; i++) {
+        (void)hmap_get_default(&map, i, i * 10);
+    }
+    ASSERT_TRUE(map.size == 22);
+
+    // After a grow the previously inserted key is accessible under its new address.
+    ASSERT_TRUE(hmap_get(&map, 1)->value == 105);
+    for(int i = 2; i <= 22; i++) {
+        ASSERT_TRUE(hmap_get(&map, i) != NULL);
+        ASSERT_TRUE(hmap_get(&map, i)->value == i * 10);
+    }
+
+    hmap_free(&map);
+}
+
+CTEST(hmap, get_default_bytes_tombstone_reuse) {
+    HashMap(int, int) map = {0};
+
+    for(int i = 1; i <= 20; i++) {
+        hmap_put(&map, i, i);
+    }
+
+    for(int i = 1; i <= 10; i++) {
+        hmap_delete(&map, i);
+    }
+    ASSERT_TRUE(map.size == 10);
+
+    // Re-inserting deleted keys via get_default should reuse tombstone slots.
+    for(int i = 1; i <= 10; i++) {
+        (void)hmap_get_default(&map, i, i * 100);
+    }
+    ASSERT_TRUE(map.size == 20);
+
+    for(int i = 1; i <= 10; i++) {
+        ASSERT_TRUE(hmap_get(&map, i) != NULL);
+        ASSERT_TRUE(hmap_get(&map, i)->value == i * 100);
+    }
+
+    hmap_free(&map);
+}
+
+CTEST(hmap, get_cstr) {
+    HashMap(const char *, int) map = {0};
+
+    ASSERT_TRUE(hmap_get_cstr(&map, "missing") == NULL);
+
+    for(int i = 0; i < 22; i++) {
+        hmap_put_cstr(&map, temp_sprintf("key %d", i), i * 10);
+    }
+
+    ASSERT_TRUE(hmap_get_cstr(&map, "key 3") != NULL);
+    ASSERT_TRUE(hmap_get_cstr(&map, "key 3")->value == 30);
+    hmap_get_cstr(&map, "key 3")->value = 77;
+    ASSERT_TRUE(hmap_get_cstr(&map, "key 3")->value == 77);
+
+    ASSERT_TRUE(hmap_get_cstr(&map, "key 99") == NULL);
+
+    hmap_free(&map);
+    temp_reset();
+}
+
+CTEST(hmap, get_default_cstr) {
+    HashMap(const char *, int) map = {0};
+
+    // Word-count pattern.
+    const char *words[] = {"foo", "bar", "foo", "baz", "foo", "bar"};
+    for(size_t i = 0; i < 6; i++) {
+        hmap_get_default_cstr(&map, words[i], 0)->value++;
+    }
+
+    ASSERT_TRUE(map.size == 3);
+    ASSERT_TRUE(hmap_get_cstr(&map, "foo")->value == 3);
+    ASSERT_TRUE(hmap_get_cstr(&map, "bar")->value == 2);
+    ASSERT_TRUE(hmap_get_cstr(&map, "baz")->value == 1);
+
+    hmap_free(&map);
+    temp_reset();
+}
+
+CTEST(hmap, get_ss) {
+    HashMap(StringSlice, int) map = {0};
+
+    ASSERT_TRUE(hmap_get_ss(&map, ss_from_cstr("missing")) == NULL);
+
+    for(int i = 0; i < 22; i++) {
+        hmap_put_ss(&map, ss_from_cstr(temp_sprintf("key %d", i)), i * 10);
+    }
+
+    ASSERT_TRUE(hmap_get_ss(&map, ss_from_cstr("key 7")) != NULL);
+    ASSERT_TRUE(hmap_get_ss(&map, ss_from_cstr("key 7"))->value == 70);
+    hmap_get_ss(&map, ss_from_cstr("key 7"))->value = 55;
+    ASSERT_TRUE(hmap_get_ss(&map, ss_from_cstr("key 7"))->value == 55);
+
+    ASSERT_TRUE(hmap_get_ss(&map, ss_from_cstr("key 99")) == NULL);
+
+    hmap_free(&map);
+    temp_reset();
+}
+
+CTEST(hmap, get_default_ss) {
+    HashMap(StringSlice, int) map = {0};
+
+    // Word-count pattern — primary use case for get_default.
+    const char *words[] = {"foo", "bar", "foo", "baz", "foo", "bar"};
+    for(size_t i = 0; i < 6; i++) {
+        hmap_get_default_ss(&map, ss_from_cstr(words[i]), 0)->value++;
+    }
+
+    ASSERT_TRUE(map.size == 3);
+    ASSERT_TRUE(hmap_get_ss(&map, ss_from_cstr("foo"))->value == 3);
+    ASSERT_TRUE(hmap_get_ss(&map, ss_from_cstr("bar"))->value == 2);
+    ASSERT_TRUE(hmap_get_ss(&map, ss_from_cstr("baz"))->value == 1);
+
+    hmap_free(&map);
+    temp_reset();
+}
+
+CTEST(hmap, entry_macro_foreach) {
+    HashMap(int, int) map = {0};
+
+    for(int i = 0; i < 20; i++) {
+        hmap_put(&map, i, i * 2);
+    }
+
+    // Entry(K, V) used as the type argument; valid because hmap_begin returns void*.
+    int count = 0;
+    int sum = 0;
+    hmap_foreach(Entry(int, int), it, &map) {
+        count++;
+        sum += it->value;
+    }
+    ASSERT_TRUE(count == 20);
+    ASSERT_TRUE(sum == 380);  // 2 * (0+1+...+19) = 2 * 190
+
+    hmap_free(&map);
 }
 
 CTEST(defer, loop) {

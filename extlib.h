@@ -1,5 +1,5 @@
 /**
- * extlib v1.4.1 - c extended library
+ * extlib v2.0.0 - c extended library
  *
  * Single-header-file library that provides functionality that extends the standard c library.
  * Features:
@@ -43,8 +43,35 @@
  *
  *  Changelog:
  *
+ *  v2.0.0:
+ *      - Breaking changes on hashmap implementation:
+ *        Reworked the hashmap implementation to make possible the usage of `ext_hmap_get` and
+ *        `ext_hmap_get_default` family of functions as expressions. Now it is possible to do
+ *        things like:
+ *        ```c
+ *        Entry* e = hmap_get_cstr(&hmap, "key");
+ *        if(e != NULL) {
+ *            ...
+ *        }
+ *        ```
+ *
+ *      - Added `Ext_Array` and `Ext_HashMap`/`Ext_Entry` macros to define required struct layout
+ *        for both dynamic arrays and hashmap in-line.
+ *        This makes it possible to skip declaring the full struct by hand when we do not need
+ *        to reference it by name (i.e. create variables to it, pass it to functions, etc.):
+ *        ```c
+ *        Array(int) int_array = {0};
+ *        HashMap(char*, int) int_map = {0};
+ *        ```
+ *        Declaring full struct layout by hand is still supported.
+ *
+ *      - Breaking change: removed deprecated functions and macros:
+ *           1. ext_strdup_alloc and ext_memdup_alloc
+ *           2. EXT_DEFER_LOOP
+ *
  *  v1.4.1:
  *      - Minor tweaks to allocation functions - move some of them to be `inline`
+ *
  *  v1.4.0:
  *      - Simplified arena allocator
  *      - Fixes in temp allocator and arena allocator
@@ -168,6 +195,10 @@ static inline size_t strlen(const char *s) {
     while(s[len] != '\0') len++;
     return len;
 }
+static inline int strcmp(const char *l, const char *r) {
+    for(; *l == *r && *l; l++, r++);
+    return *(unsigned char *)l - *(unsigned char *)r;
+}
 void assert(int c);  // TODO: are we sure we want to require wasm embedder to provide `assert`?
 #endif  // EXTLIB_NO_STD
 
@@ -238,10 +269,10 @@ void assert(int c);  // TODO: are we sure we want to require wasm embedder to pr
 #include <assert.h>
 #define EXT_STATIC_ASSERT static_assert
 #else
-#define EXT_STATIC_ASSERT(cond, msg)            \
-    typedef struct {                            \
-        int static_assertion_failed : !!(cond); \
-    } EXT_CONCAT_(EXT_CONCAT_(static_assertion_failed_, __COUNTER__), __LINE__)
+#define EXT_STATIC_ASSERT(cond, msg)                                                   \
+    struct EXT_CONCAT_(EXT_CONCAT_(static_assertion_failed_, __COUNTER__), __LINE__) { \
+        int static_assertion_failed : !!(cond);                                        \
+    }
 #endif  // defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L) && !defined(EXTLIB_NO_STD)
 
 // Debug macro: prints an expression to stderr and returns its value.
@@ -361,7 +392,6 @@ void assert(int c);  // TODO: are we sure we want to require wasm embedder to pr
 // }
 // ```
 #define ext_defer_loop(begin, end) for(int i__ = ((begin), 0); i__ != 1; i__ = ((end), 1))
-#define EXT_DEFER_LOOP             ext_defer_loop
 
 // Assigns passed in value to variable, and jumps to label.
 //
@@ -450,7 +480,7 @@ Ext_Context *ext_pop_context(void);
 // }
 // // ... context automatically popped
 // ```
-#define EXT_PUSH_CONTEXT(ctx) EXT_DEFER_LOOP(ext_push_context(ctx), ext_pop_context())
+#define EXT_PUSH_CONTEXT(ctx) ext_defer_loop(ext_push_context(ctx), ext_pop_context())
 
 // Utility macro to push/pop context with an allocator between code.
 // Simplifies pushing when the only thing you want to customize is the allocator.
@@ -465,7 +495,7 @@ Ext_Context *ext_pop_context(void);
 #define EXT_PUSH_ALLOCATOR(allocator)                       \
     Ext_Context EXT_CONCAT_(ctx_, __LINE__) = *ext_context; \
     EXT_CONCAT_(ctx_, __LINE__).alloc = (allocator);        \
-    EXT_DEFER_LOOP(ext_push_context(&EXT_CONCAT_(ctx_, __LINE__)), ext_pop_context())
+    ext_defer_loop(ext_push_context(&EXT_CONCAT_(ctx_, __LINE__)), ext_pop_context())
 
 // Utility macro to push/pop a context with the given logging level set.
 // Simplifies pushing when the only thing you want to customize is the logging level.
@@ -481,7 +511,7 @@ Ext_Context *ext_pop_context(void);
 #define EXT_LOGGING_LEVEL(level)                            \
     Ext_Context EXT_CONCAT_(ctx_, __LINE__) = *ext_context; \
     EXT_CONCAT_(ctx_, __LINE__).log_level = (level);        \
-    EXT_DEFER_LOOP(ext_push_context(&EXT_CONCAT_(ctx_, __LINE__)), ext_pop_context())
+    ext_defer_loop(ext_push_context(&EXT_CONCAT_(ctx_, __LINE__)), ext_pop_context())
 
 // -----------------------------------------------------------------------------
 // SECTION: Allocators
@@ -599,12 +629,6 @@ inline char *ext_strdup(const char *s) {
 inline void *ext_memdup(const void *mem, size_t size) {
     return ext_allocator_memdup(ext_context->alloc, mem, size);
 }
-
-// Backward compatibility: old _alloc suffix functions now use ext_allocator_* internally
-// Note: parameter order changed - allocator is now first parameter
-// DEPRECATED: Use ext_allocator_strdup and ext_allocator_memdup instead
-#define ext_strdup_alloc(s, a)         ext_allocator_strdup(a, s)
-#define ext_memdup_alloc(mem, size, a) ext_allocator_memdup(a, mem, size)
 
 // A default allocator that uses malloc/realloc/free.
 // It is the allocator configured in the context at program start.
@@ -822,7 +846,9 @@ char *ext_arena_vsprintf(Ext_Arena *a, const char *fmt, va_list ap);
 // The dynamic array integrates with the `Allocator` interface and the context to support custom
 // allocators for its backing array.
 //
-// USAGE;
+// The dynamic arrays macro expect a specific struct layout (see USAGE).
+//
+// USAGE:
 //```c
 // typedef struct {
 //     int* items;
@@ -848,6 +874,31 @@ char *ext_arena_vsprintf(Ext_Arena *a, const char *fmt, va_list ap);
 #ifndef EXT_ARRAY_INIT_CAP
 #define EXT_ARRAY_INIT_CAP 8
 #endif  // EXT_ARRAY_INIT_CAP
+
+// Utility macro for defining a dynamic array in-line.
+// The array is defined as an anonymous struct.
+//
+// USAGE:
+// ```c
+// Array(int) int_array = {0};
+// array_push(&int_array, 1);
+// array_push(&int_array, 2);
+// ...
+// ```
+//
+// You can also use this macro to `typedef` the array definition so you can re-use it multiple
+// times:
+// ```c
+// typedef Array(int) Int_Array;
+// ...
+// Int_Array int_array = {0};
+// ```
+#define Ext_Array(T)              \
+    struct {                      \
+        T *items;                 \
+        size_t capacity, size;    \
+        Ext_Allocator *allocator; \
+    }
 
 // Macro to iterate over all elements
 //
@@ -1321,7 +1372,9 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
 // The hashmap integrates with the `Allocator` interface and the context to support custom
 // allocators for its backing entry and hashes array.
 //
-// USAGE
+// The hashmap, like the dynamic array, expects a specific struct layout (see USAGE).
+//
+// USAGE:
 // ```c
 // typedef struct {
 //     int key;
@@ -1335,11 +1388,10 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
 //     Allocator *allocator;
 // } IntMap;
 //
-// IntHashMap map = {0};
+// IntMap map = {0};
 // hmap_put(&map, 1, 10);
 //
-// IntEntry* e;
-// hmap_get(&map, 1, &e);
+// IntEntry* e = hmap_get(&map, 1);
 // if(e != NULL) { // Found!
 //     printf("key = %d value = %d", e->key, e->value);
 // }
@@ -1353,161 +1405,188 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
 // temp_reset(&map);
 // ```
 
+// Declares a hashmap struct in-line for key type K and value type V, using `Ext_Entry(K, V)` for
+// the entries array. The generated struct has the same layout as a manually-declared hashmap struct
+// (see above).
+//
+// USAGE:
+// ```c
+// Ext_HashMap(StringSlice, int) word_count = {0};
+// hmap_get_default_ss(&word_count, word, 0)->value++;
+//
+// hmap_foreach(Ext_Entry(StringSlice, int), it, &word_count) {
+//     printf("%zu\n", (size_t)it->value);
+// }
+// ```
+//
+// You can also use this macro to `typedef` the hashmap definition so you can re-use it multiple
+// times:
+// ```c
+// typedef HashMap(int, int) Int_HashMap;
+// ...
+// Int_HashMap int_map = {0};
+// ```
+#define Ext_HashMap(K, V)          \
+    struct {                       \
+        Ext_Entry(K, V) * entries; \
+        size_t *hashes;            \
+        size_t size, capacity;     \
+        Ext_Allocator *allocator;  \
+    }
+
+// Declares a hashmap entry struct with fields `key` (type K) and `value` (type V).
+// Useful as the type argument to `hmap_foreach` when using `Ext_HashMap`:
+//
+// ```c
+// hmap_foreach(Ext_Entry(StringSlice, int), it, &map) { ... }
+// ```
+//
+// NOTE: each expansion of `Ext_Entry(K, V)` produces a distinct anonymous struct type. Pointer
+// assignments between two separate expansions require a cast. For direct variable storage, prefer
+// typedef-ing the hashmap type once or using manual struct layout.
+#define Ext_Entry(K, V) \
+    struct {            \
+        K key;          \
+        V value;        \
+    }
+
 // Read as: size * 0.75, i.e. a load factor of 75%
 // This is basically doing:
 //   size / 2 + size / 4 = (3 * size) / 4
 #define EXT_HMAP_MAX_ENTRY_LOAD(size) (((size) >> 1) + ((size) >> 2))
 
-// Puts an entry into the hashmap.
-// `hash_fn` is expected to be a function (or function-like macro)
-// that takes a key by pointer and returns an hash of it. `cmp_fn` is also expected to be a
-// function (or function-like macro) that takes two keys by pointer and compares them, returning
-// 0 if they're euqal, -1 if a is less than b, 1 if a is greater than b.
+// Puts an entry into the hashmap with custom hash and compare functions.
 //
-// You probably want to use the non-ex version of this function (ext_hmap_put, ext_hmap_put_cstr
-// or ext_hmap_put_ss) unless you specifically need to customize the way entries are hashed or
-// compared.
-#define ext_hmap_put_ex(hmap, entry_key, entry_val, hash_fn, cmp_fn)                             \
-    do {                                                                                         \
-        if((hmap)->size >= EXT_HMAP_MAX_ENTRY_LOAD((hmap)->capacity + 1)) {                      \
-            ext_hmap_grow_((void **)&(hmap)->entries, sizeof(*(hmap)->entries), &(hmap)->hashes, \
-                           &(hmap)->capacity, (Ext_Allocator **)&(hmap)->allocator);             \
-            ext_hmap_tombs_(hmap) = (hmap)->size;                                                \
-        }                                                                                        \
-        ext_hmap_tmp_(hmap).key = (entry_key);                                                   \
-        ext_hmap_tmp_(hmap).value = (entry_val);                                                 \
-        size_t hash = hash_fn(&ext_hmap_tmp_(hmap).key);                                         \
-        if(hash < 2) hash += 2;                                                                  \
-        ext_hmap_find_index_(hmap, &ext_hmap_tmp_(hmap).key, hash, cmp_fn);                      \
-        if(!EXT_HMAP_IS_VALID((hmap)->hashes[idx_])) {                                           \
-            (hmap)->size++;                                                                      \
-            if(!EXT_HMAP_IS_TOMB((hmap)->hashes[idx_])) ext_hmap_tombs_(hmap)++;                 \
-        }                                                                                        \
-        (hmap)->entries[idx_] = ext_hmap_tmp_(hmap);                                             \
-        (hmap)->hashes[idx_] = hash;                                                             \
+// `hash_fn` and `cmp_fn` are functions:
+//   size_t hash_fn(KeyType *key, size_t key_size)                   — returns hash of the key
+//   int    cmp_fn (KeyType *key_a, KeyType *key_b, size_t key_size) — returns 0 if equal
+// Both receive a pointer to the key field (first field of the entry) along with its size
+// (sizeof(KeyType)).
+//
+// You probably want to use ext_hmap_put / ext_hmap_put_cstr / ext_hmap_put_ss instead.
+#define ext_hmap_put_ex(hmap, entry_key, entry_val, hash_fn, cmp_fn)                              \
+    do {                                                                                          \
+        if((hmap)->size >= EXT_HMAP_MAX_ENTRY_LOAD((hmap)->capacity + 1)) {                       \
+            ext__hmap_grow_((void **)&(hmap)->entries, sizeof(*(hmap)->entries), &(hmap)->hashes, \
+                            &(hmap)->capacity, (Ext_Allocator **)&(hmap)->allocator);             \
+        }                                                                                         \
+        ext__hmap_tmp_(hmap).key = (entry_key);                                                   \
+        ext__hmap_tmp_(hmap).value = (entry_val);                                                 \
+        size_t hash_ = hash_fn(&ext__hmap_tmp_(hmap).key, sizeof(ext__hmap_tmp_(hmap).key));      \
+        if(hash_ < 2) hash_ += 2;                                                                 \
+        ext__hmap_find_((hmap)->entries, (hmap)->hashes, (hmap)->capacity,                        \
+                        sizeof(*(hmap)->entries), sizeof((hmap)->entries[EXT_HMAP_TMP_SLOT].key), \
+                        (hash_fn), (cmp_fn));                                                     \
+        size_t idx_ = (hmap)->hashes[EXT_HMAP_TMP_SLOT];                                          \
+        if(!EXT_HMAP_IS_VALID((hmap)->hashes[idx_])) (hmap)->size++;                              \
+        (hmap)->entries[idx_] = ext__hmap_tmp_(hmap);                                             \
+        (hmap)->hashes[idx_] = hash_;                                                             \
     } while(0)
 
-// Gets an entry from the hashmap.
-// The retrieved entry is put in `out` if found, otherwise `out` is set to NULL.
-// `hash_fn` is expected to be a function (or function-like macro) that takes a key by pointer
-// and returns an hash of it. `cmp_fn` is also expected to be a function (or function-like
-// macro) that takes two keys by pointer and compares them, returning 0 if they're euqal, -1 if
-// a is less than b, 1 if a is greater than b.
-//
-// You probably want to use the non-ex version of this function (ext_hmap_get, ext_hmap_get_cstr
-// or ext_hmap_get_ss) unless you specifically need to customize the way entries are hashed or
-// compared.
-#define ext_hmap_get_ex(hmap, entry_key, out, hash_fn, cmp_fn)              \
-    do {                                                                    \
-        if(!(hmap)->size) {                                                 \
-            *(out) = NULL;                                                  \
-            break;                                                          \
-        }                                                                   \
-        ext_hmap_tmp_(hmap).key = (entry_key);                              \
-        size_t hash = hash_fn(&ext_hmap_tmp_(hmap).key);                    \
-        if(hash < 2) hash += 2;                                             \
-        ext_hmap_find_index_(hmap, &ext_hmap_tmp_(hmap).key, hash, cmp_fn); \
-        if(EXT_HMAP_IS_VALID((hmap)->hashes[idx_])) {                       \
-            *(out) = &(hmap)->entries[idx_];                                \
-        } else {                                                            \
-            *(out) = NULL;                                                  \
-        }                                                                   \
-    } while(0)
+// Returns a pointer to the entry with the given key (custom hash/cmp), or NULL.
+// `hash_fn` must be a function pointer `size_t (*)(const void *, size_t)`;
+// `cmp_fn` must be a function pointer `int (*)(const void *, const void *, size_t)`.
+// Both receive a pointer to the key (the first field of the entry) along with its size
+// (sizeof(KeyType)).
+#define ext_hmap_get_ex(hmap, entry_key, hash_fn, cmp_fn)                                         \
+    ((hmap)->size == 0                                                                            \
+         ? (void *)0                                                                              \
+         : (ext__hmap_tmp_(hmap).key = (entry_key),                                               \
+            ext__hmap_find_((hmap)->entries, (hmap)->hashes, (hmap)->capacity,                    \
+                            sizeof(*(hmap)->entries),                                             \
+                            sizeof((hmap)->entries[EXT_HMAP_TMP_SLOT].key), (hash_fn), (cmp_fn)), \
+            EXT_HMAP_IS_VALID((hmap)->hashes[(hmap)->hashes[EXT_HMAP_TMP_SLOT]])                  \
+                ? (hmap)->entries + (hmap)->hashes[EXT_HMAP_TMP_SLOT]                             \
+                : NULL))
 
-// Gets an entry from the hashmap, creating a new one in if it is not found.
-// The retrieved (or newly created) entry is put in `out`.
-// `hash_fn` is expected to be a function (or function-like macro) that takes a key by pointer
-// and returns an hash of it. `cmp_fn` is also expected to be a function (or function-like
-// macro) that takes two keys by pointer and compares them, returning 0 if they're euqal, -1 if
-// a is less than b, 1 if a is greater than b.
-//
-// You probably want to use the non-ex version of this function (ext_hmap_get, ext_hmap_get_cstr
-// or ext_hmap_get_ss) unless you specifically need to customize the way entries are hashed or
-// compared.
-#define ext_hmap_get_default_ex(hmap, entry_key, entry_val, out, hash_fn, cmp_fn)                \
-    do {                                                                                         \
-        if((hmap)->size >= EXT_HMAP_MAX_ENTRY_LOAD((hmap)->capacity + 1)) {                      \
-            ext_hmap_grow_((void **)&(hmap)->entries, sizeof(*(hmap)->entries), &(hmap)->hashes, \
-                           &(hmap)->capacity, (Ext_Allocator **)&(hmap)->allocator);             \
-            ext_hmap_tombs_(hmap) = (hmap)->size;                                                \
-        }                                                                                        \
-        ext_hmap_tmp_(hmap).key = (entry_key);                                                   \
-        ext_hmap_tmp_(hmap).value = (entry_val);                                                 \
-        size_t hash = hash_fn(&ext_hmap_tmp_(hmap).key);                                         \
-        if(hash < 2) hash += 2;                                                                  \
-        ext_hmap_find_index_(hmap, &ext_hmap_tmp_(hmap).key, hash, cmp_fn);                      \
-        if(!EXT_HMAP_IS_VALID((hmap)->hashes[idx_])) {                                           \
-            (hmap)->size++;                                                                      \
-            if(!EXT_HMAP_IS_TOMB((hmap)->hashes[idx_])) ext_hmap_tombs_(hmap)++;                 \
-            (hmap)->entries[idx_] = ext_hmap_tmp_(hmap);                                         \
-            (hmap)->hashes[idx_] = hash;                                                         \
-        }                                                                                        \
-        *(out) = &(hmap)->entries[idx_];                                                         \
-    } while(0)
+// Returns a pointer to the entry with the given key, or NULL.
+// Keys are hashed and compared byte-for-byte with memcmp.
+#define ext_hmap_get(hmap, entry_key) \
+    ext_hmap_get_ex(hmap, entry_key, ext__hmap_hash_bytes_, ext__hmap_cmp_bytes_)
+
+// Returns a pointer to the entry with the given key (cstr variant), or NULL.
+// Keys are compared with strcmp and hashed with `ext_hash_cstr_`
+#define ext_hmap_get_cstr(hmap, entry_key) \
+    ext_hmap_get_ex(hmap, entry_key, ext__hmap_hash_cstr_, ext__hmap_cmp_cstr_)
+
+// Returns a pointer to the entry with the given key (StringSlice variant), or NULL.
+// Keys are compared with ext_ss_cmp and hashed with ext_hash_bytes_ on the slice's `data` member.
+#define ext_hmap_get_ss(hmap, entry_key) \
+    ext_hmap_get_ex(hmap, entry_key, ext__hmap_hash_ss_, ext__hmap_cmp_ss_)
+
+// Returns a pointer to the existing entry (with custom hash/cmp functions), inserting with
+// `entry_val` when absent.
+// Refer to `ext_hmap_get_ex` for function signatures.
+#define ext_hmap_get_default_ex(hmap, entry_key, entry_val, hash_fn, cmp_fn)                      \
+    ((hmap)->size >= EXT_HMAP_MAX_ENTRY_LOAD((hmap)->capacity + 1)                                \
+         ? (ext__hmap_grow_((void **)&(hmap)->entries, sizeof(*(hmap)->entries), &(hmap)->hashes, \
+                            &(hmap)->capacity, (Ext_Allocator **)&(hmap)->allocator),             \
+            0)                                                                                    \
+         : 0,                                                                                     \
+     ext__hmap_tmp_(hmap).key = (entry_key), ext__hmap_tmp_(hmap).value = (entry_val),            \
+     ext__hmap_find_default_((hmap)->entries, (hmap)->hashes, &(hmap)->size, (hmap)->capacity,    \
+                             sizeof(*(hmap)->entries), sizeof((hmap)->entries[0].key), (hash_fn), \
+                             (cmp_fn)),                                                           \
+     (hmap)->entries + (hmap)->hashes[EXT_HMAP_TMP_SLOT])
+
+// Returns a pointer to the existing entry with the given key, inserting a new
+// entry with `entry_val` as the value when absent.  Keys are compared with
+// memcmp.
+#define ext_hmap_get_default(hmap, entry_key, entry_val) \
+    ext_hmap_get_default_ex(hmap, entry_key, entry_val, ext__hmap_hash_bytes_, ext__hmap_cmp_bytes_)
+
+// Returns a pointer to the existing entry (cstr variant), inserting with
+// `entry_val` when absent.
+#define ext_hmap_get_default_cstr(hmap, entry_key, entry_val) \
+    ext_hmap_get_default_ex(hmap, entry_key, entry_val, ext__hmap_hash_cstr_, ext__hmap_cmp_cstr_)
+
+// Returns a pointer to the existing entry (StringSlice variant), inserting
+// with `entry_val` when absent.
+#define ext_hmap_get_default_ss(hmap, entry_key, entry_val) \
+    ext_hmap_get_default_ex(hmap, entry_key, entry_val, ext__hmap_hash_ss_, ext__hmap_cmp_ss_)
 
 // Deletes an entry from the hashmap.
-// `hash_fn` is expected to be a function (or function-like macro) that takes the entry and
-// returns an hash of it. `cmp_fn` is also expected to be a function (or function-like macro)
-// that takes two entries and compares them, returning 0 if they're euqal, -1 if a is less than
-// b, 1 if a is greater than b.
-//
-// You probably want to use the non-ex version of this function (ext_hmap_delete,
-// ext_hmap_delete_cstr or ext_hmap_delete_ss) unless you specifically need to customize the way
-// entries are hashed or compared.
-#define ext_hmap_delete_ex(hmap, entry_key, hash_fn, cmp_fn)                \
-    do {                                                                    \
-        if(!(hmap)->size) break;                                            \
-        ext_hmap_tmp_(hmap).key = (entry_key);                              \
-        size_t hash = hash_fn(&ext_hmap_tmp_(hmap).key);                    \
-        if(hash < 2) hash += 2;                                             \
-        ext_hmap_find_index_(hmap, &ext_hmap_tmp_(hmap).key, hash, cmp_fn); \
-        if(EXT_HMAP_IS_VALID((hmap)->hashes[idx_])) {                       \
-            (hmap)->hashes[idx_] = EXT_HMAP_TOMB_MARK;                      \
-            (hmap)->size--;                                                 \
-        }                                                                   \
+// See ext_hmap_put_ex for hash_fn / cmp_fn conventions.
+// You probably want ext_hmap_delete / ext_hmap_delete_cstr / ext_hmap_delete_ss instead.
+#define ext_hmap_delete_ex(hmap, entry_key, hash_fn, cmp_fn)                                      \
+    do {                                                                                          \
+        if(!(hmap)->size) break;                                                                  \
+        ext__hmap_tmp_(hmap).key = (entry_key);                                                   \
+        size_t hash_ = hash_fn(&ext__hmap_tmp_(hmap).key, sizeof(ext__hmap_tmp_(hmap).key));     \
+        if(hash_ < 2) hash_ += 2;                                                                 \
+        ext__hmap_find_((hmap)->entries, (hmap)->hashes, (hmap)->capacity,                        \
+                        sizeof(*(hmap)->entries), sizeof((hmap)->entries[EXT_HMAP_TMP_SLOT].key), \
+                        (hash_fn), (cmp_fn));                                                     \
+        size_t idx_ = (hmap)->hashes[EXT_HMAP_TMP_SLOT];                                          \
+        if(EXT_HMAP_IS_VALID((hmap)->hashes[idx_])) {                                             \
+            (hmap)->hashes[idx_] = EXT_HMAP_TOMB_MARK;                                            \
+            (hmap)->size--;                                                                       \
+        }                                                                                         \
     } while(0)
 
-// Puts an entry into the hashmap. keys are compared with `memcmp`.
+// Puts an entry into the hashmap. Keys are compared byte-for-byte with memcmp.
 #define ext_hmap_put(hmap, entry_key, entry_val) \
-    ext_hmap_put_ex(hmap, entry_key, entry_val, ext_hmap_hash_bytes_, ext_hmap_memcmp_)
-// Gets an entry from the hashmap. keys are compared with `memcmp`.
-#define ext_hmap_get(hmap, entry_key, out) \
-    ext_hmap_get_ex(hmap, entry_key, out, ext_hmap_hash_bytes_, ext_hmap_memcmp_)
-// Gets an entry from the hashmap, creating a new one if not found. keys are compared with
-// `memcmp`.
-#define ext_hmap_get_default(hmap, entry_key, entry_val, out) \
-    ext_hmap_get_default_ex(hmap, entry_key, entry_val, out, ext_hmap_hash_bytes_, ext_hmap_memcmp_)
-// Deletes an entry from the hashmap. keys are compared with `memcmp`.
+    ext_hmap_put_ex(hmap, entry_key, entry_val, ext__hmap_hash_bytes_, ext__hmap_cmp_bytes_)
+
+// Deletes an entry from the hashmap. Keys are compared byte-for-byte with memcmp.
 #define ext_hmap_delete(hmap, entry_key) \
-    ext_hmap_delete_ex(hmap, entry_key, ext_hmap_hash_bytes_, ext_hmap_memcmp_)
+    ext_hmap_delete_ex(hmap, entry_key, ext__hmap_hash_bytes_, ext__hmap_cmp_bytes_)
 
-// Puts an entry into the hashmap. keys are compared with `strcmp`.
+// Puts an entry into the hashmap. Keys are compared with strcmp.
 #define ext_hmap_put_cstr(hmap, entry_key, entry_val) \
-    ext_hmap_put_ex(hmap, entry_key, entry_val, ext_hmap_hash_cstr_, ext_hmap_strcmp_)
-// Gets an entry from the hashmap. keys are compared with `strcmp`.
-#define ext_hmap_get_cstr(hmap, entry_key, out) \
-    ext_hmap_get_ex(hmap, entry_key, out, ext_hmap_hash_cstr_, ext_hmap_strcmp_)
-// Gets an entry from the hashmap, creating a new one if not found. keys are compared with
-// `strcmp`.
-#define ext_hmap_get_default_cstr(hmap, entry_key, entry_val, out) \
-    ext_hmap_get_default_ex(hmap, entry_key, entry_val, out, ext_hmap_hash_cstr_, ext_hmap_strcmp_)
-// Deletes an entry from the hashmap. keys are compared with `strcmp`.
-#define ext_hmap_delete_cstr(hmap, entry_key) \
-    ext_hmap_delete_ex(hmap, entry_key, ext_hmap_hash_cstr_, ext_hmap_strcmp_)
+    ext_hmap_put_ex(hmap, entry_key, entry_val, ext__hmap_hash_cstr_, ext__hmap_cmp_cstr_)
 
-// Puts an entry into the hashmap. keys are compared with `ss_cmp`.
+// Deletes an entry from the hashmap. Keys are compared with strcmp.
+#define ext_hmap_delete_cstr(hmap, entry_key) \
+    ext_hmap_delete_ex(hmap, entry_key, ext__hmap_hash_cstr_, ext__hmap_cmp_cstr_)
+
+// Puts an entry into the hashmap. Keys are compared with ext_ss_cmp.
 #define ext_hmap_put_ss(hmap, entry_key, entry_val) \
-    ext_hmap_put_ex(hmap, entry_key, entry_val, ext_hmap_hash_ss_, ext_hmap_sscmp_)
-// Gets an entry from the hashmap. keys are compared with `ext_ss_cmp`.
-#define ext_hmap_get_ss(hmap, entry_key, out) \
-    ext_hmap_get_ex(hmap, entry_key, out, ext_hmap_hash_ss_, ext_hmap_sscmp_)
-// Gets an entry from the hashmap, creating a new one if not found. keys are compared with
-// `ss_cmp`.
-#define ext_hmap_get_default_ss(hmap, entry_key, entry_val, out) \
-    ext_hmap_get_default_ex(hmap, entry_key, entry_val, out, ext_hmap_hash_ss_, ext_hmap_sscmp_)
-// Delets an entry from the hashmap. keys are compared with `ss_cmp`.
+    ext_hmap_put_ex(hmap, entry_key, entry_val, ext__hmap_hash_ss_, ext__hmap_cmp_ss_)
+
+// Deletes an entry from the hashmap. Keys are compared with ext_ss_cmp.
 #define ext_hmap_delete_ss(hmap, entry_key) \
-    ext_hmap_delete_ex(hmap, entry_key, ext_hmap_hash_ss_, ext_hmap_sscmp_)
+    ext_hmap_delete_ex(hmap, entry_key, ext__hmap_hash_ss_, ext__hmap_cmp_ss_)
 
 // Clears the hashmap
 #define ext_hmap_clear(hmap)                                                         \
@@ -1549,11 +1628,11 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
 // }
 // ```
 #define ext_hmap_end(hmap) \
-    ext_hmap_end_((hmap)->entries, (hmap)->capacity, sizeof(*(hmap)->entries))
+    ext__hmap_end_((hmap)->entries, (hmap)->capacity, sizeof(*(hmap)->entries))
 #define ext_hmap_begin(hmap) \
-    ext_hmap_begin_((hmap)->entries, (hmap)->hashes, (hmap)->capacity, sizeof(*(hmap)->entries))
+    ext__hmap_begin_((hmap)->entries, (hmap)->hashes, (hmap)->capacity, sizeof(*(hmap)->entries))
 #define ext_hmap_next(hmap, it) \
-    ext_hmap_next_((hmap)->entries, (hmap)->hashes, it, (hmap)->capacity, sizeof(*(hmap)->entries))
+    ext__hmap_next_((hmap)->entries, (hmap)->hashes, it, (hmap)->capacity, sizeof(*(hmap)->entries))
 
 #ifndef EXT_HMAP_INIT_CAPACITY
 #define EXT_HMAP_INIT_CAPACITY 8
@@ -1572,72 +1651,40 @@ EXT_STATIC_ASSERT(((EXT_HMAP_INIT_CAPACITY) & (EXT_HMAP_INIT_CAPACITY - 1)) == 0
 #define EXT_HMAP_IS_EMPTY(h) ((h) == EXT_HMAP_EMPTY_MARK)
 #define EXT_HMAP_IS_VALID(h) (!EXT_HMAP_IS_EMPTY(h) && !EXT_HMAP_IS_TOMB(h))
 
-void ext_hmap_grow_(void **entries, size_t entries_sz, size_t **hashes, size_t *cap,
-                    Ext_Allocator **a);
+void ext__hmap_grow_(void **entries, size_t entries_sz, size_t **hashes, size_t *cap,
+                     Ext_Allocator **a);
 
-#define ext_hmap_tmp_(map)   ((map)->entries[EXT_HMAP_TMP_SLOT])
-#define ext_hmap_tombs_(map) ((map)->hashes[EXT_HMAP_TMP_SLOT])
-
-#define ext_hmap_find_index_(map, entry_key, hash, cmp_fn)                                     \
-    size_t idx_ = 0;                                                                           \
-    {                                                                                          \
-        size_t i_ = ((hash) & (map)->capacity);                                                \
-        bool tomb_found_ = false;                                                              \
-        size_t tomb_idx_ = 0;                                                                  \
-        for(;;) {                                                                              \
-            size_t buck = (map)->hashes[i_ + 1];                                               \
-            if(!EXT_HMAP_IS_VALID(buck)) {                                                     \
-                if(EXT_HMAP_IS_EMPTY(buck)) {                                                  \
-                    idx_ = tomb_found_ ? tomb_idx_ : i_ + 1;                                   \
-                    break;                                                                     \
-                } else if(!tomb_found_) {                                                      \
-                    tomb_found_ = true;                                                        \
-                    tomb_idx_ = i_ + 1;                                                        \
-                }                                                                              \
-            } else if(buck == hash && cmp_fn((entry_key), &(map)->entries[i_ + 1].key) == 0) { \
-                idx_ = i_ + 1;                                                                 \
-                break;                                                                         \
-            }                                                                                  \
-            i_ = ((i_ + 1) & (map)->capacity);                                                 \
-        }                                                                                      \
-    }
-
-#define ext_hmap_hash_bytes_(k)  ext_hash_bytes_((k), sizeof(*(k)))
-#define ext_hmap_hash_cstr_(k)   ext_hash_cstr_(*(k))
-#define ext_hmap_hash_ss_(k)     ext_hash_bytes_((k)->data, (k)->size)
-#define ext_hmap_memcmp_(k1, k2) memcmp((k1), (k2), sizeof(*(k1)))
-#define ext_hmap_strcmp_(k1, k2) strcmp(*(k1), *(k2))
-#define ext_hmap_sscmp_(k1, k2)  ext_ss_cmp(*(k1), *(k2))
+#define ext__hmap_tmp_(map) ((map)->entries[EXT_HMAP_TMP_SLOT])
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"
 #endif  // __GNUC__
 
-static inline void *ext_hmap_end_(const void *entries, size_t cap, size_t sz) {
+static inline void *ext__hmap_end_(const void *entries, size_t cap, size_t sz) {
     return entries ? (char *)entries + (cap + 2) * sz : NULL;
 }
 
-static inline void *ext_hmap_begin_(const void *entries, const size_t *hashes, size_t cap,
-                                    size_t sz) {
+static inline void *ext__hmap_begin_(const void *entries, const size_t *hashes, size_t cap,
+                                     size_t sz) {
     if(!entries) return NULL;
     for(size_t i = 1; i <= cap + 1; i++) {
         if(EXT_HMAP_IS_VALID(hashes[i])) {
             return (char *)entries + i * sz;
         }
     }
-    return ext_hmap_end_(entries, cap, sz);
+    return ext__hmap_end_(entries, cap, sz);
 }
 
-static inline void *ext_hmap_next_(const void *entries, const size_t *hashes, const void *it,
-                                   size_t cap, size_t sz) {
+static inline void *ext__hmap_next_(const void *entries, const size_t *hashes, const void *it,
+                                    size_t cap, size_t sz) {
     size_t curr = ((char *)it - (char *)entries) / sz;
     for(size_t idx = curr + 1; idx <= cap + 1; idx++) {
         if(EXT_HMAP_IS_VALID(hashes[idx])) {
             return (char *)entries + idx * sz;
         }
     }
-    return ext_hmap_end_(entries, cap, sz);
+    return ext__hmap_end_(entries, cap, sz);
 }
 
 // -----------------------------------------------------------------------------
@@ -1822,15 +1869,94 @@ static inline size_t ext_hash_bytes_(const void *p, size_t len) {
     }
 #endif
 }
+
+// End of stbds.h
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Concrete hash / compare functions for the built-in key types.
+//
+// Both functions follow the same convention used by the _ex macros:
+//   hash_fn(entry, key_sz) — entry points to the full entry; key_sz carries
+//     sizeof(key) for the bytes variant and is ignored by cstr/ss.
+//   cmp_fn(entry_a, entry_b, key_sz) — returns 0 on a key match.
+
+static inline size_t ext__hmap_hash_bytes_(const void *entry, size_t key_sz) {
+    return ext_hash_bytes_(entry, key_sz);
+}
+static inline size_t ext__hmap_hash_cstr_(const void *entry, size_t key_sz) {
+    (void)key_sz;
+    return ext_hash_cstr_(*(const char *const *)entry);
+}
+static inline size_t ext__hmap_hash_ss_(const void *entry, size_t key_sz) {
+    (void)key_sz;
+    const Ext_StringSlice *ss = (const Ext_StringSlice *)entry;
+    return ext_hash_bytes_(ss->data, ss->size);
+}
+static inline int ext__hmap_cmp_bytes_(const void *ea, const void *eb, size_t key_sz) {
+    return memcmp(ea, eb, key_sz);
+}
+static inline int ext__hmap_cmp_cstr_(const void *ea, const void *eb, size_t key_sz) {
+    (void)key_sz;
+    return strcmp(*(const char *const *)ea, *(const char *const *)eb);
+}
+static inline int ext__hmap_cmp_ss_(const void *ea, const void *eb, size_t key_sz) {
+    (void)key_sz;
+    return ext_ss_cmp(*(const Ext_StringSlice *)ea, *(const Ext_StringSlice *)eb);
+}
+
+// Probes for the key in entries[EXT_HMAP_TMP_SLOT]; writes the slot index to
+// hashes[EXT_HMAP_TMP_SLOT] and returns the computed hash.
+static inline size_t ext__hmap_find_(const void *entries, size_t *hashes, size_t cap,
+                                     size_t entry_sz, size_t key_sz,
+                                     size_t (*hash_fn)(const void *, size_t),
+                                     int (*cmp_fn)(const void *, const void *, size_t)) {
+    size_t hash = hash_fn(entries, key_sz);
+    if(hash < 2) hash += 2;
+
+    size_t idx = hash & cap;
+    bool tomb_found = 0;
+    size_t tomb_idx = 0;
+    for(;;) {
+        size_t bucket = hashes[idx + 1];
+        if(!EXT_HMAP_IS_VALID(bucket)) {
+            if(EXT_HMAP_IS_EMPTY(bucket)) {
+                hashes[EXT_HMAP_TMP_SLOT] = tomb_found ? tomb_idx : idx + 1;
+                break;
+            } else if(!tomb_found) {
+                tomb_found = 1;
+                tomb_idx = idx + 1;
+            }
+        } else if(bucket == (hash) &&
+                  cmp_fn(entries, (const char *)entries + (idx + 1) * entry_sz, key_sz) == 0) {
+            hashes[EXT_HMAP_TMP_SLOT] = idx + 1;
+            break;
+        }
+        idx = (idx + 1) & (cap);
+    }
+
+    return hash;
+}
+
+static inline void ext__hmap_find_default_(const void *entries, size_t *hashes,
+                                           size_t *hashmap_size, size_t cap, size_t entry_sz,
+                                           size_t key_sz, size_t (*hash_fn)(const void *, size_t),
+                                           int (*cmp_fn)(const void *, const void *, size_t)) {
+    size_t hash = ext__hmap_find_(entries, hashes, cap, entry_sz, key_sz, hash_fn, cmp_fn);
+    size_t idx = hashes[EXT_HMAP_TMP_SLOT];
+    if(!EXT_HMAP_IS_VALID(hashes[idx])) {
+        memcpy((char *)entries + idx * entry_sz, entries, entry_sz);
+        hashes[idx] = hash;
+        (*hashmap_size)++;
+    }
+}
+
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif  // _MSC_VER
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif  // __GNUC__
-
-// End of stbds.h
-// -----------------------------------------------------------------------------
 
 #define ext__return_tox_(a, b, c, d, ...) d
 #define ext__return_to1_(result_)         ext__return_to3_(result_, exit, res)
@@ -1842,6 +1968,7 @@ static inline size_t ext_hash_bytes_(const void *p, size_t len) {
     } while(0)
 
 #ifdef EXTLIB_IMPL
+
 // -----------------------------------------------------------------------------
 // SECTION: Logging
 //
@@ -3412,8 +3539,8 @@ exit:;
 // -----------------------------------------------------------------------------
 // SECTION: Hashmap
 //
-void ext_hmap_grow_(void **entries, size_t entries_sz, size_t **hashes, size_t *cap,
-                    Ext_Allocator **a) {
+void ext__hmap_grow_(void **entries, size_t entries_sz, size_t **hashes, size_t *cap,
+                     Ext_Allocator **a) {
     size_t newcap = *cap ? (*cap + 1) * 2 : EXT_HMAP_INIT_CAPACITY;
     size_t newsz = (newcap + 1) * entries_sz;
     size_t pad = EXT_ALIGN_PAD(newsz, sizeof(size_t));
@@ -3615,7 +3742,6 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define GiB           EXT_GiB
 #define PRINTF_FORMAT EXT_PRINTF_FORMAT
 #define defer_loop    ext_defer_loop
-#define DEFER_LOOP    EXT_DEFER_LOOP
 #define return_exit   ext_return_exit
 
 #define DEBUG      EXT_DEBUG
@@ -3689,6 +3815,7 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define arena_vsprintf ext_arena_vsprintf
 #endif  // EXTLIB_NO_STD
 
+#define Array               Ext_Array
 #define array_foreach       ext_array_foreach
 #define array_reserve       ext_array_reserve
 #define array_reserve_exact ext_array_reserve_exact
@@ -3809,6 +3936,8 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define cmd_write              ext_cmd_write
 #endif
 
+#define Entry                 Ext_Entry
+#define HashMap               Ext_HashMap
 #define hmap_foreach          ext_hmap_foreach
 #define hmap_end              ext_hmap_end
 #define hmap_begin            ext_hmap_begin
