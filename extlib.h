@@ -1475,8 +1475,8 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
         size_t hash_ = hash_fn(&ext__hmap_tmp_(hmap).key, sizeof(ext__hmap_tmp_(hmap).key));      \
         if(hash_ < 2) hash_ += 2;                                                                 \
         ext__hmap_find_((hmap)->entries, (hmap)->hashes, (hmap)->capacity,                        \
-                        sizeof(*(hmap)->entries), sizeof((hmap)->entries[EXT_HMAP_TMP_SLOT].key), \
-                        (hash_fn), (cmp_fn));                                                     \
+                        sizeof(*(hmap)->entries), sizeof(ext__hmap_tmp_(hmap).key), (hash_fn),    \
+                        (cmp_fn));                                                                \
         size_t idx_ = (hmap)->hashes[EXT_HMAP_TMP_SLOT];                                          \
         if(!EXT_HMAP_IS_VALID((hmap)->hashes[idx_])) (hmap)->size++;                              \
         (hmap)->entries[idx_] = ext__hmap_tmp_(hmap);                                             \
@@ -1489,15 +1489,14 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
 // Both receive a pointer to the key (the first field of the entry) along with its size
 // (sizeof(KeyType)).
 #define ext_hmap_get_ex(hmap, entry_key, hash_fn, cmp_fn)                                         \
-    ((hmap)->size == 0                                                                            \
-         ? (void *)0                                                                              \
-         : (ext__hmap_tmp_(hmap).key = (entry_key),                                               \
-            ext__hmap_find_((hmap)->entries, (hmap)->hashes, (hmap)->capacity,                    \
-                            sizeof(*(hmap)->entries),                                             \
-                            sizeof((hmap)->entries[EXT_HMAP_TMP_SLOT].key), (hash_fn), (cmp_fn)), \
-            EXT_HMAP_IS_VALID((hmap)->hashes[(hmap)->hashes[EXT_HMAP_TMP_SLOT]])                  \
-                ? (hmap)->entries + (hmap)->hashes[EXT_HMAP_TMP_SLOT]                             \
-                : NULL))
+    ((hmap)->size == 0 ? (void *)0                                                                \
+                       : (ext__hmap_tmp_(hmap).key = (entry_key),                                 \
+                          ext__hmap_find_((hmap)->entries, (hmap)->hashes, (hmap)->capacity,      \
+                                          sizeof(*(hmap)->entries),                               \
+                                          sizeof(ext__hmap_tmp_(hmap).key), (hash_fn), (cmp_fn)), \
+                          EXT_HMAP_IS_VALID((hmap)->hashes[(hmap)->hashes[EXT_HMAP_TMP_SLOT]])    \
+                              ? (hmap)->entries + (hmap)->hashes[EXT_HMAP_TMP_SLOT]               \
+                              : NULL))
 
 // Returns a pointer to the entry with the given key, or NULL.
 // Keys are hashed and compared byte-for-byte with memcmp.
@@ -1548,20 +1547,20 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
 // Deletes an entry from the hashmap.
 // See ext_hmap_put_ex for hash_fn / cmp_fn conventions.
 // You probably want ext_hmap_delete / ext_hmap_delete_cstr / ext_hmap_delete_ss instead.
-#define ext_hmap_delete_ex(hmap, entry_key, hash_fn, cmp_fn)                                      \
-    do {                                                                                          \
-        if(!(hmap)->size) break;                                                                  \
-        ext__hmap_tmp_(hmap).key = (entry_key);                                                   \
-        size_t hash_ = hash_fn(&ext__hmap_tmp_(hmap).key, sizeof(ext__hmap_tmp_(hmap).key));     \
-        if(hash_ < 2) hash_ += 2;                                                                 \
-        ext__hmap_find_((hmap)->entries, (hmap)->hashes, (hmap)->capacity,                        \
-                        sizeof(*(hmap)->entries), sizeof((hmap)->entries[EXT_HMAP_TMP_SLOT].key), \
-                        (hash_fn), (cmp_fn));                                                     \
-        size_t idx_ = (hmap)->hashes[EXT_HMAP_TMP_SLOT];                                          \
-        if(EXT_HMAP_IS_VALID((hmap)->hashes[idx_])) {                                             \
-            (hmap)->hashes[idx_] = EXT_HMAP_TOMB_MARK;                                            \
-            (hmap)->size--;                                                                       \
-        }                                                                                         \
+#define ext_hmap_delete_ex(hmap, entry_key, hash_fn, cmp_fn)                                   \
+    do {                                                                                       \
+        if(!(hmap)->size) break;                                                               \
+        ext__hmap_tmp_(hmap).key = (entry_key);                                                \
+        size_t hash_ = hash_fn(&ext__hmap_tmp_(hmap).key, sizeof(ext__hmap_tmp_(hmap).key));   \
+        if(hash_ < 2) hash_ += 2;                                                              \
+        ext__hmap_find_((hmap)->entries, (hmap)->hashes, (hmap)->capacity,                     \
+                        sizeof(*(hmap)->entries), sizeof(ext__hmap_tmp_(hmap).key), (hash_fn), \
+                        (cmp_fn));                                                             \
+        size_t idx_ = (hmap)->hashes[EXT_HMAP_TMP_SLOT];                                       \
+        if(EXT_HMAP_IS_VALID((hmap)->hashes[idx_])) {                                          \
+            (hmap)->hashes[idx_] = EXT_HMAP_TOMB_MARK;                                         \
+            (hmap)->size--;                                                                    \
+        }                                                                                      \
     } while(0)
 
 // Puts an entry into the hashmap. Keys are compared byte-for-byte with memcmp.
