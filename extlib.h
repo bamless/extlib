@@ -238,10 +238,10 @@ void assert(int c);  // TODO: are we sure we want to require wasm embedder to pr
 #include <assert.h>
 #define EXT_STATIC_ASSERT static_assert
 #else
-#define EXT_STATIC_ASSERT(cond, msg)            \
-    typedef struct {                            \
-        int static_assertion_failed : !!(cond); \
-    } EXT_CONCAT_(EXT_CONCAT_(static_assertion_failed_, __COUNTER__), __LINE__)
+#define EXT_STATIC_ASSERT(cond, msg)                                                   \
+    struct EXT_CONCAT_(EXT_CONCAT_(static_assertion_failed_, __COUNTER__), __LINE__) { \
+        int static_assertion_failed : !!(cond);                                        \
+    }
 #endif  // defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L) && !defined(EXTLIB_NO_STD)
 
 // Debug macro: prints an expression to stderr and returns its value.
