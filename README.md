@@ -57,6 +57,8 @@ typedef struct {
     int value;
 } WordFreq;
 
+// Could also create this typedef with `HashMap` utility macro:
+//     typedef HashMap(StringSlice, int) WordMap;
 typedef struct {
     WordFreq* entries;
     size_t* hashes;
@@ -64,6 +66,8 @@ typedef struct {
     Allocator* allocator;
 } WordMap;
 
+// Could also create this typedef with `Array` utility macro:
+//     typedef Array(StringSlice) Words;
 typedef struct {
     StringSlice* items;
     size_t size, capacity;
@@ -97,8 +101,7 @@ int main(int argc, char** argv) {
 
     WordMap word_freqs = {0};
     array_foreach(StringSlice, it, &words) {
-        WordFreq* e;
-        hmap_get_default_ss(&word_freqs, *it, 0, &e);
+        WordFreq* e = hmap_get_default_ss(&word_freqs, *it, 0);
         e->value++;
     }
 
