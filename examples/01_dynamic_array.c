@@ -11,6 +11,8 @@
 #define EXTLIB_IMPL
 #include "../extlib.h"
 
+// Could also create this typedef with `Array` utility macro:
+//     typedef Array(StringSlice) Lines;
 typedef struct {
     StringSlice *items;
     size_t size, capacity;
@@ -22,6 +24,8 @@ static int qsort_cmp(const void *a, const void *b) {
 }
 
 int main(void) {
+    // Could also define this dynamic array inline with:
+    //     Array(StringSlice) lines = {0};
     Lines lines = {0};
     StringBuffer file = {0};
 

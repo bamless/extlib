@@ -822,7 +822,7 @@ char *ext_arena_vsprintf(Ext_Arena *a, const char *fmt, va_list ap);
 // The dynamic array integrates with the `Allocator` interface and the context to support custom
 // allocators for its backing array.
 //
-// USAGE;
+// USAGE:
 //```c
 // typedef struct {
 //     int* items;
@@ -848,6 +848,31 @@ char *ext_arena_vsprintf(Ext_Arena *a, const char *fmt, va_list ap);
 #ifndef EXT_ARRAY_INIT_CAP
 #define EXT_ARRAY_INIT_CAP 8
 #endif  // EXT_ARRAY_INIT_CAP
+
+// Utility macro for defining a dynamic array in-line.
+// The array is defined as an anonymous struct.
+//
+// USAGE:
+// ```c
+// Array(int) int_array = {0};
+// array_push(&int_array, 1);
+// array_push(&int_array, 2);
+// ...
+// ```
+//
+// You can also use this macro to `typedef` the array definition so you can re-use it multiple
+// times:
+// ```c
+// typedef Array(int) Int_Array;
+// ...
+// Int_Array int_array = {0};
+// ```
+#define Ext_Array(T)              \
+    struct {                      \
+        T *items;                 \
+        size_t capacity, size;    \
+        Ext_Allocator *allocator; \
+    }
 
 // Macro to iterate over all elements
 //
@@ -3689,6 +3714,7 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 #define arena_vsprintf ext_arena_vsprintf
 #endif  // EXTLIB_NO_STD
 
+#define Array               Ext_Array
 #define array_foreach       ext_array_foreach
 #define array_reserve       ext_array_reserve
 #define array_reserve_exact ext_array_reserve_exact
