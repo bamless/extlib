@@ -1495,7 +1495,7 @@ CTEST(hmap, get_put) {
 
     IntEntry *entry = hmap_get(&map, 2);
     ASSERT_TRUE(entry != NULL);
-    ASSERT_TRUE(entry->value = 100);
+    ASSERT_TRUE(entry->value == 100);
     entry->value += 50;
 
     IntEntry *entry2 = hmap_get(&map, 2);
