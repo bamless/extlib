@@ -6,7 +6,14 @@ LDFLAGS ?=
 all: examples
 
 .PHONY: examples
-examples: examples/01_dynamic_array examples/02_hashmap examples/03_arena examples/03_arena.wasm examples/04_cat examples/05_ls
+examples: examples/01_dynamic_array   \
+	examples/01_inline_dynamic_array  \
+	examples/02_hashmap               \
+	examples/02_inline_hashmap        \
+	examples/03_arena                 \
+	examples/03_arena.wasm            \
+	examples/04_cat                   \
+	examples/05_ls
 
 examples/%: examples/%.c extlib.h
 	$(CC) $(CFLAGS) $(LDFLAGS) $< -o $@
