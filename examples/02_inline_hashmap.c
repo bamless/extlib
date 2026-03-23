@@ -11,15 +11,13 @@
 #define EXTLIB_IMPL
 #include "../extlib.h"
 
-#define HIST_DEF 80
-
 #define shift(argc, argv) ((argc)--, *(argv)++)
+#define HIST_DEF          80
 
 const char *symbols = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+static bool reverse;
 
 typedef Entry(StringSlice, size_t) WordFreq;
-
-static bool reverse;
 
 static int qsort_cmp(const void *a, const void *b) {
     const WordFreq *e1 = a, *e2 = b;
