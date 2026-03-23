@@ -1472,15 +1472,13 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
         }                                                                                         \
         ext__hmap_tmp_(hmap).key = (entry_key);                                                   \
         ext__hmap_tmp_(hmap).value = (entry_val);                                                 \
-        size_t hash_ = hash_fn(&ext__hmap_tmp_(hmap).key, sizeof(ext__hmap_tmp_(hmap).key));      \
-        if(hash_ < 2) hash_ += 2;                                                                 \
-        ext__hmap_find_((hmap)->entries, (hmap)->hashes, (hmap)->capacity,                        \
-                        sizeof(*(hmap)->entries), sizeof(ext__hmap_tmp_(hmap).key), (hash_fn),    \
-                        (cmp_fn));                                                                \
-        size_t idx_ = (hmap)->hashes[EXT_HMAP_TMP_SLOT];                                          \
-        if(!EXT_HMAP_IS_VALID((hmap)->hashes[idx_])) (hmap)->size++;                              \
-        (hmap)->entries[idx_] = ext__hmap_tmp_(hmap);                                             \
-        (hmap)->hashes[idx_] = hash_;                                                             \
+        size_t hash = ext__hmap_find_((hmap)->entries, (hmap)->hashes, (hmap)->capacity,          \
+                                      sizeof(*(hmap)->entries), sizeof(ext__hmap_tmp_(hmap).key), \
+                                      (hash_fn), (cmp_fn));                                       \
+        size_t idx = (hmap)->hashes[EXT_HMAP_TMP_SLOT];                                           \
+        if(!EXT_HMAP_IS_VALID((hmap)->hashes[idx])) (hmap)->size++;                               \
+        (hmap)->entries[idx] = ext__hmap_tmp_(hmap);                                              \
+        (hmap)->hashes[idx] = hash;                                                               \
     } while(0)
 
 // Returns a pointer to the entry with the given key (custom hash/cmp), or NULL.
@@ -1524,8 +1522,8 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
          : 0,                                                                                     \
      ext__hmap_tmp_(hmap).key = (entry_key), ext__hmap_tmp_(hmap).value = (entry_val),            \
      ext__hmap_find_default_((hmap)->entries, (hmap)->hashes, &(hmap)->size, (hmap)->capacity,    \
-                             sizeof(*(hmap)->entries), sizeof((hmap)->entries[0].key), (hash_fn), \
-                             (cmp_fn)),                                                           \
+                             sizeof(*(hmap)->entries), sizeof(ext__hmap_tmp_(hmap).key),          \
+                             (hash_fn), (cmp_fn)),                                                \
      (hmap)->entries + (hmap)->hashes[EXT_HMAP_TMP_SLOT])
 
 // Returns a pointer to the existing entry with the given key, inserting a new
@@ -1551,14 +1549,12 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
     do {                                                                                       \
         if(!(hmap)->size) break;                                                               \
         ext__hmap_tmp_(hmap).key = (entry_key);                                                \
-        size_t hash_ = hash_fn(&ext__hmap_tmp_(hmap).key, sizeof(ext__hmap_tmp_(hmap).key));   \
-        if(hash_ < 2) hash_ += 2;                                                              \
         ext__hmap_find_((hmap)->entries, (hmap)->hashes, (hmap)->capacity,                     \
                         sizeof(*(hmap)->entries), sizeof(ext__hmap_tmp_(hmap).key), (hash_fn), \
                         (cmp_fn));                                                             \
-        size_t idx_ = (hmap)->hashes[EXT_HMAP_TMP_SLOT];                                       \
-        if(EXT_HMAP_IS_VALID((hmap)->hashes[idx_])) {                                          \
-            (hmap)->hashes[idx_] = EXT_HMAP_TOMB_MARK;                                         \
+        size_t idx = (hmap)->hashes[EXT_HMAP_TMP_SLOT];                                        \
+        if(EXT_HMAP_IS_VALID((hmap)->hashes[idx])) {                                           \
+            (hmap)->hashes[idx] = EXT_HMAP_TOMB_MARK;                                          \
             (hmap)->size--;                                                                    \
         }                                                                                      \
     } while(0)
@@ -1914,7 +1910,7 @@ static inline size_t ext__hmap_find_(const void *entries, size_t *hashes, size_t
     if(hash < 2) hash += 2;
 
     size_t idx = hash & cap;
-    bool tomb_found = 0;
+    bool tomb_found = false;
     size_t tomb_idx = 0;
     for(;;) {
         size_t bucket = hashes[idx + 1];
@@ -1923,7 +1919,7 @@ static inline size_t ext__hmap_find_(const void *entries, size_t *hashes, size_t
                 hashes[EXT_HMAP_TMP_SLOT] = tomb_found ? tomb_idx : idx + 1;
                 break;
             } else if(!tomb_found) {
-                tomb_found = 1;
+                tomb_found = true;
                 tomb_idx = idx + 1;
             }
         } else if(bucket == (hash) &&
