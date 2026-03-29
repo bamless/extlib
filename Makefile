@@ -19,7 +19,7 @@ examples/%: examples/%.c extlib.h
 	$(CC) $(CFLAGS) $(LDFLAGS) $< -o $@
 
 examples/03_arena.wasm: examples/03_arena.c extlib.h
-	clang $(CFLAGS) -DEXTLIB_WASM=1                                   \
+	clang $(CFLAGS)                                                   \
 		-std=c99 -fno-builtin --target=wasm32 --no-standard-libraries \
 		-Wl,--no-entry                                                \
 		-Wl,--allow-undefined                                         \

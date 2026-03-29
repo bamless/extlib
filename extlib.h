@@ -44,6 +44,7 @@
  *  Changelog:
  *
  *  v2.0.1:
+ *      Better implementations of builtin functions when compiling wasm with clang
  *      Correctly mark `ext_allocator_memdup` and `ext_allocator_strdup` inline.
  *
  *  v2.0.0:
@@ -125,6 +126,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#if defined(__wasm__) && !defined(EXTLIB_WASM)
+#define EXTLIB_WASM
+#endif
+
 #ifdef EXTLIB_WASM
 #ifndef EXTLIB_NO_STD
 #define EXTLIB_NO_STD
@@ -169,7 +174,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#else   // EXTLIB_NO_STD
+#elif defined(EXTLIB_WASM) && defined(__clang__)
+#define memcmp __builtin_memcmp
+#define memcpy __builtin_memcpy
+#define memset __builtin_memset
+#define memchr __builtin_memchr
+static inline int strcmp(const char *l, const char *r) {
+    for(; *l == *r && *l; l++, r++);
+    return *(unsigned char *)l - *(unsigned char *)r;
+}
+static inline size_t strlen(const char *s) {
+    size_t len = 0;
+    while(s[len] != '\0') len++;
+    return len;
+}
+#else
 static inline int memcmp(const void *s1, const void *s2, size_t n) {
     const unsigned char *p1 = (const unsigned char *)s1;
     const unsigned char *p2 = (const unsigned char *)s2;
@@ -193,6 +212,14 @@ static inline void *memset(void *s, int c, size_t n) {
     while(n--) *p++ = (unsigned char)c;
     return s;
 }
+static inline void *memchr(const void *src_void, int c, size_t length) {
+    const uint8_t *src = (const uint8_t *)src_void;
+    while(length-- > 0) {
+        if(*src == c) return (void *)src;
+        src++;
+    }
+    return NULL;
+}
 static inline size_t strlen(const char *s) {
     size_t len = 0;
     while(s[len] != '\0') len++;
@@ -202,7 +229,6 @@ static inline int strcmp(const char *l, const char *r) {
     for(; *l == *r && *l; l++, r++);
     return *(unsigned char *)l - *(unsigned char *)r;
 }
-void assert(int c);  // TODO: are we sure we want to require wasm embedder to provide `assert`?
 #endif  // EXTLIB_NO_STD
 
 #ifdef EXTLIB_THREADSAFE
@@ -232,6 +258,7 @@ void assert(int c);  // TODO: are we sure we want to require wasm embedder to pr
 // Assert is disabled when compiling with NDEBUG, unreachable is instead replaced with compiler
 // intrinsics on gcc, clang and msvc.
 #ifndef NDEBUG
+
 #ifndef EXTLIB_NO_STD
 #define EXT_ASSERT(cond, msg)                                                                    \
     ((cond) ? ((void)0)                                                                          \
@@ -240,13 +267,25 @@ void assert(int c);  // TODO: are we sure we want to require wasm embedder to pr
 
 #define EXT_UNREACHABLE() \
     (fprintf(stderr, "%s:%d: error: reached unreachable code\n", __FILE__, __LINE__), abort())
+
+#elif defined(EXTLIB_WASM) && defined(__clang__)
+
+#define EXT_ASSERT(cond, msg)         \
+    do {                              \
+        if(!(cond)) __builtin_trap(); \
+    } while(0)
+
+#define EXT_UNREACHABLE() __builtin_trap()
+
 #else
 #define EXT_ASSERT(cond, msg) assert((cond) && msg)
 #define EXT_UNREACHABLE()     assert(false && "reached unreachable code")
 #endif  // EXTLIB_NO_STD
 
-#else
-#define EXT_ASSERT(cond, msg) ((void)(cond))
+#else  // NDEBUG
+#define EXT_ASSERT(cond, msg) \
+    do {                      \
+    } while(0)
 
 #if defined(__GNUC__) || defined(__clang__)
 #define EXT_UNREACHABLE() __builtin_unreachable()
@@ -254,7 +293,7 @@ void assert(int c);  // TODO: are we sure we want to require wasm embedder to pr
 #include <stdlib.h>
 #define EXT_UNREACHABLE() __assume(0)
 #else
-#define EXT_UNREACHABLE()
+#define EXT_UNREACHABLE() ((void)0)
 #endif  // defined(__GNUC__) || defined(__clang__)
 
 #endif  // NDEBUG
@@ -2494,18 +2533,9 @@ void ext_sb_replace(Ext_StringBuffer *sb, size_t start, const char *to_replace, 
     EXT_ASSERT(start < sb->size, "start out of bounds");
     size_t to_replace_len = strlen(to_replace);
     for(size_t i = start; i < sb->size; i++) {
-#ifdef EXTLIB_NO_STD
-        for(size_t j = 0; j < to_replace_len; j++) {
-            if(sb->items[i] == to_replace[j]) {
-                sb->items[i] = replacment;
-                break;
-            }
-        }
-#else
         if(memchr(to_replace, sb->items[i], to_replace_len) != NULL) {
             sb->items[i] = replacment;
         }
-#endif
     }
 }
 
@@ -2689,14 +2719,7 @@ ptrdiff_t ext_ss_rfind_cstr(Ext_StringSlice ss, const char *needle, size_t offse
 }
 
 static bool any_match(char c, const char *set, size_t set_len) {
-#ifdef EXTLIB_NO_STD
-    for(size_t i = 0; i < set_len; i++) {
-        if(c == set[i]) return true;
-    }
-    return false;
-#else
     return memchr(set, c, set_len) != NULL;
-#endif  // EXTLIB_NO_STD
 }
 
 Ext_StringSlice ext_ss_split_once_any(Ext_StringSlice *ss, const char *set) {

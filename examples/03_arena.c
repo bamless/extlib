@@ -10,14 +10,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define EXTLIB_IMPL
+#include "../extlib.h"
+
 #ifndef EXTLIB_WASM
 #include <stdio.h>
 #else
 int printf(const char *fmt, ...);
 #endif
-
-#define EXTLIB_IMPL
-#include "../extlib.h"
 
 static Arena arena = make_arena();
 

@@ -26,11 +26,7 @@ python -m http.server 8080
                 }
 
                 window.w = await WebAssembly.instantiateStreaming(fetch("./03_arena.wasm"), {
-                    "env": make_environment({
-                        assert: function(c) {
-                            if(!c) throw new Error("Assertion failed");
-                        }
-                    })
+                    "env": make_environment()
                 });
             })();
         </script>
