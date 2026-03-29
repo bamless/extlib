@@ -16,8 +16,6 @@
 
 #define shift(argc, argv) ((argc)--, *(argv)++)
 
-const char *symbols = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
-
 typedef struct {
     StringSlice key;
     size_t value;
@@ -36,6 +34,7 @@ typedef struct {
     Allocator *allocator;
 } WordArray;
 
+static const char *symbols = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
 static bool reverse;
 
 static int qsort_cmp(const void *a, const void *b) {

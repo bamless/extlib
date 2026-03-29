@@ -19,13 +19,10 @@ int printf(const char *fmt, ...);
 #define EXTLIB_IMPL
 #include "../extlib.h"
 
-Arena arena = make_arena();
+static Arena arena = make_arena();
 
-const char *prec[] = {
-    "+-",
-    "*/",
-};
-const size_t max_prec = ARR_SIZE(prec);
+static const char *prec[] = {"+-", "*/"};
+static const size_t max_prec = ARR_SIZE(prec);
 
 size_t get_prec(char op) {
     for(size_t i = 0; i < ARR_SIZE(prec); i++) {
@@ -54,7 +51,7 @@ typedef struct Expr {
     } as;
 } Expr;
 
-void error(const Src *src, const char *msg) {
+static void error(const Src *src, const char *msg) {
     int col = src->ptr - src->src;
     ASSERT(col >= 0, "negative column");
     printf("%d: ", col);
@@ -70,19 +67,19 @@ static int is_space(int c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r';
 }
 
-char advance(Src *src) {
+static char advance(Src *src) {
     while(is_space(*src->ptr)) src->ptr++;
     return *src->ptr++;
 }
 
-char peek(const Src *src) {
+static char peek(const Src *src) {
     Src s = *src;
     return advance(&s);
 }
 
-Expr *parse_bin_expr(Src *expr, size_t prec);
+static Expr *parse_bin_expr(Src *expr, size_t prec);
 
-Expr *parse_lit(Src *src) {
+static Expr *parse_lit(Src *src) {
     char c = advance(src);
 
     if(c == '(') {
@@ -122,7 +119,7 @@ Expr *parse_lit(Src *src) {
     return lit;
 }
 
-Expr *parse_bin_expr(Src *src, size_t prec) {
+static Expr *parse_bin_expr(Src *src, size_t prec) {
     if(prec >= max_prec) return parse_lit(src);
 
     Expr *l = parse_bin_expr(src, prec + 1);
@@ -144,7 +141,7 @@ Expr *parse_bin_expr(Src *src, size_t prec) {
     return l;
 }
 
-Expr *parse_expr(const char *expr) {
+static Expr *parse_expr(const char *expr) {
     Src src = {expr, expr};
     Expr *res = parse_bin_expr(&src, 0);
     if(!res) return NULL;
@@ -158,7 +155,7 @@ Expr *parse_expr(const char *expr) {
     return res;
 }
 
-double interpret_expr(const Expr *e) {
+static double interpret_expr(const Expr *e) {
     ASSERT(e, "e is NULL");
     switch(e->kind) {
     case BIN: {
@@ -183,7 +180,21 @@ double interpret_expr(const Expr *e) {
     UNREACHABLE();
 }
 
-void dump_expr(const Expr *e) {
+#ifdef EXTLIB_WASM
+// Export function in wasm to pase & evaluate an expression (see 03_arena.html)
+double eval_expr(char *src) {
+    Expr *expr = parse_expr(src);
+    if(!expr) {
+        arena_reset(&arena);
+        return 0.0 / 0.0;  // NaN
+    }
+
+    double res = interpret_expr(expr);
+    arena_reset(&arena);
+    return res;
+}
+#else
+static void dump_expr(const Expr *e) {
     ASSERT(e, "e is NULL");
     switch(e->kind) {
     case BIN:
@@ -199,20 +210,6 @@ void dump_expr(const Expr *e) {
     }
 }
 
-#ifdef EXTLIB_WASM
-// Export function in wasm to pase & evaluate an expression (see 03_arena.html)
-double eval_expr(char *src) {
-    Expr *expr = parse_expr(src);
-    if(!expr) {
-        arena_reset(&arena);
-        return 0.0 / 0.0;  // NaN
-    }
-
-    double res = interpret_expr(expr);
-    arena_reset(&arena);
-    return res;
-}
-#else
 int main(int argc, char **argv) {
     if(argc < 2) {
         fprintf(stderr, "%s expression\n", argv[0]);
