@@ -43,6 +43,9 @@
  *
  *  Changelog:
  *
+ *  v2.0.1:
+ *      Correctly mark `ext_allocator_memdup` and `ext_allocator_strdup` inline.
+ *
  *  v2.0.0:
  *      - Breaking changes on hashmap implementation:
  *        Reworked the hashmap implementation to make possible the usage of `ext_hmap_get` and
@@ -607,7 +610,7 @@ inline void ext_free(void *ptr, size_t size) {
 }
 
 // Copies a cstring by using the provided allocator
-char *ext_allocator_strdup(Ext_Allocator *a, const char *s) {
+inline char *ext_allocator_strdup(Ext_Allocator *a, const char *s) {
     size_t len = strlen(s);
     char *res = a->alloc(a, len + 1);
     memcpy(res, s, len);
@@ -616,7 +619,7 @@ char *ext_allocator_strdup(Ext_Allocator *a, const char *s) {
 }
 
 // Copies a memory region of `size` bytes by using the provided allocator
-void *ext_allocator_memdup(Ext_Allocator *a, const void *mem, size_t size) {
+inline void *ext_allocator_memdup(Ext_Allocator *a, const void *mem, size_t size) {
     return memcpy(a->alloc(a, size), mem, size);
 }
 
