@@ -260,6 +260,7 @@ static inline int strcmp(const char *l, const char *r) {
 #ifndef NDEBUG
 
 #ifndef EXTLIB_NO_STD
+
 #define EXT_ASSERT(cond, msg)                                                                    \
     ((cond) ? ((void)0)                                                                          \
             : (fprintf(stderr, "%s:%d: error: %s failed: %s\n", __FILE__, __LINE__, #cond, msg), \
@@ -269,14 +270,8 @@ static inline int strcmp(const char *l, const char *r) {
     (fprintf(stderr, "%s:%d: error: reached unreachable code\n", __FILE__, __LINE__), abort())
 
 #elif defined(EXTLIB_WASM) && defined(__clang__)
-
-#define EXT_ASSERT(cond, msg)         \
-    do {                              \
-        if(!(cond)) __builtin_trap(); \
-    } while(0)
-
-#define EXT_UNREACHABLE() __builtin_trap()
-
+#define EXT_ASSERT(cond, msg) ((cond) ? ((void)0) : __builtin_trap())
+#define EXT_UNREACHABLE()     __builtin_trap()
 #else
 #define EXT_ASSERT(cond, msg) assert((cond) && msg)
 #define EXT_UNREACHABLE()     assert(false && "reached unreachable code")
