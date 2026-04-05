@@ -385,7 +385,7 @@ static inline int strcmp(const char *l, const char *r) {
         // && !defined(EXTLIB_NO_STD)
 
 // Returns the required padding to align `o` to `s` bytes. `s` must be a power of two.
-#define EXT_ALIGN_PAD(o, s) (-(uintptr_t)(o) & (s - 1))
+#define EXT_ALIGN_PAD(o, s) ((uintptr_t)(-(intptr_t)(o)) & ((s) - 1))
 // Returns `o` rounded up to the next multiple of `s`. `s` must be a power of two.
 #define EXT_ALIGN_UP(o, s) (((uintptr_t)(o) + (s) - 1) & ~((uintptr_t)(s) - 1))
 
