@@ -1,5 +1,5 @@
 /**
- * extlib v2.0.0 - c extended library
+ * extlib v2.0.2 - c extended library
  *
  * Single-header-file library that provides functionality that extends the standard c library.
  * Features:
@@ -42,6 +42,9 @@
  *      SECTION: IO
  *
  *  Changelog:
+ *
+ *  v2.0.2:
+ *      Minor changes to `EXT_ALIGN_PAD` macro.
  *
  *  v2.0.1:
  *      Better implementations of builtin functions when compiling wasm with clang
@@ -1198,24 +1201,24 @@ typedef struct {
 //     ext_log(INFO, "Word: " SS_Fmt, SS_Arg(word));
 // }
 // ```
-#define ext_ss_foreach_split(ss, delim, var) \
-    for(StringSlice var, ss_iter_ = (ss);    \
-        ss_iter_.size && (var = ss_split_once(&ss_iter_, (delim)), true);)
+#define ext_ss_foreach_split(ss, delim, var)       \
+    for(Ext_StringSlice var, ext__ss_iter_ = (ss); \
+        ext__ss_iter_.size && (var = ss_split_once(&ext__ss_iter_, (delim)), true);)
 
 // Iterates, in reverse order, all the splits on `delim`
-#define ext_ss_foreach_rsplit(ss, delim, var) \
-    for(StringSlice var, ss_iter_ = (ss);     \
-        ss_iter_.size && (var = ss_rsplit_once(&ss_iter_, (delim)), true);)
+#define ext_ss_foreach_rsplit(ss, delim, var)      \
+    for(Ext_StringSlice var, ext__ss_iter_ = (ss); \
+        ext__ss_iter_.size && (var = ss_rsplit_once(&ext__ss_iter_, (delim)), true);)
 
 // Iterates all the split on `delim` cstring
-#define ext_ss_foreach_split_cstr(ss, delim, var) \
-    for(StringSlice var, ss_iter_ = (ss);         \
-        ss_iter_.size && (var = ss_split_once_cstr(&ss_iter_, (delim)), true);)
+#define ext_ss_foreach_split_cstr(ss, delim, var)  \
+    for(Ext_StringSlice var, ext__ss_iter_ = (ss); \
+        ext__ss_iter_.size && (var = ss_split_once_cstr(&ext__ss_iter_, (delim)), true);)
 
 // Iterates, in reverse order, all the split on `delim` cstring
 #define ext_ss_foreach_rsplit_cstr(ss, delim, var) \
-    for(StringSlice var, ss_iter_ = (ss);          \
-        ss_iter_.size && (var = ss_rsplit_once_cstr(&ss_iter_, (delim)), true);)
+    for(Ext_StringSlice var, ext__ss_iter_ = (ss); \
+        ext__ss_iter_.size && (var = ss_rsplit_once_cstr(&ext__ss_iter_, (delim)), true);)
 
 // Format specifier for a string slice.
 //
@@ -1504,8 +1507,9 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
 #define ext_hmap_put_ex(hmap, entry_key, entry_val, hash_fn, cmp_fn)                              \
     do {                                                                                          \
         if((hmap)->size >= EXT_HMAP_MAX_ENTRY_LOAD((hmap)->capacity + 1)) {                       \
-            ext__hmap_grow_((void **)&(hmap)->entries, sizeof(*(hmap)->entries), &(hmap)->hashes, \
-                            &(hmap)->capacity, (Ext_Allocator **)&(hmap)->allocator);             \
+            (hmap)->entries = ext__hmap_grow_((hmap)->entries, sizeof(*(hmap)->entries),          \
+                                              &(hmap)->hashes, &(hmap)->capacity,                 \
+                                              (Ext_Allocator **)&(hmap)->allocator);              \
         }                                                                                         \
         ext__hmap_tmp_(hmap).key = (entry_key);                                                   \
         ext__hmap_tmp_(hmap).value = (entry_val);                                                 \
@@ -1539,28 +1543,29 @@ int ext_cmd_write(const char *cmd, const void *data, size_t size);
     ext_hmap_get_ex(hmap, entry_key, ext__hmap_hash_bytes_, ext__hmap_cmp_bytes_)
 
 // Returns a pointer to the entry with the given key (cstr variant), or NULL.
-// Keys are compared with strcmp and hashed with `ext_hash_cstr_`
+// Keys are compared with strcmp and hashed with `ext__hash_cstr_`
 #define ext_hmap_get_cstr(hmap, entry_key) \
     ext_hmap_get_ex(hmap, entry_key, ext__hmap_hash_cstr_, ext__hmap_cmp_cstr_)
 
 // Returns a pointer to the entry with the given key (StringSlice variant), or NULL.
-// Keys are compared with ext_ss_cmp and hashed with ext_hash_bytes_ on the slice's `data` member.
+// Keys are compared with ext_ss_cmp and hashed with ext__hash_bytes_ on the slice's `data` member.
 #define ext_hmap_get_ss(hmap, entry_key) \
     ext_hmap_get_ex(hmap, entry_key, ext__hmap_hash_ss_, ext__hmap_cmp_ss_)
 
 // Returns a pointer to the existing entry (with custom hash/cmp functions), inserting with
 // `entry_val` when absent.
 // Refer to `ext_hmap_get_ex` for function signatures.
-#define ext_hmap_get_default_ex(hmap, entry_key, entry_val, hash_fn, cmp_fn)                      \
-    ((hmap)->size >= EXT_HMAP_MAX_ENTRY_LOAD((hmap)->capacity + 1)                                \
-         ? (ext__hmap_grow_((void **)&(hmap)->entries, sizeof(*(hmap)->entries), &(hmap)->hashes, \
-                            &(hmap)->capacity, (Ext_Allocator **)&(hmap)->allocator),             \
-            0)                                                                                    \
-         : 0,                                                                                     \
-     ext__hmap_tmp_(hmap).key = (entry_key), ext__hmap_tmp_(hmap).value = (entry_val),            \
-     ext__hmap_find_default_((hmap)->entries, (hmap)->hashes, &(hmap)->size, (hmap)->capacity,    \
-                             sizeof(*(hmap)->entries), sizeof(ext__hmap_tmp_(hmap).key),          \
-                             (hash_fn), (cmp_fn)),                                                \
+#define ext_hmap_get_default_ex(hmap, entry_key, entry_val, hash_fn, cmp_fn)                   \
+    ((hmap)->size >= EXT_HMAP_MAX_ENTRY_LOAD((hmap)->capacity + 1)                             \
+         ? ((hmap)->entries = ext__hmap_grow_((hmap)->entries, sizeof(*(hmap)->entries),       \
+                                              &(hmap)->hashes, &(hmap)->capacity,              \
+                                              (Ext_Allocator **)&(hmap)->allocator),           \
+            0)                                                                                 \
+         : 0,                                                                                  \
+     ext__hmap_tmp_(hmap).key = (entry_key), ext__hmap_tmp_(hmap).value = (entry_val),         \
+     ext__hmap_find_default_((hmap)->entries, (hmap)->hashes, &(hmap)->size, (hmap)->capacity, \
+                             sizeof(*(hmap)->entries), sizeof(ext__hmap_tmp_(hmap).key),       \
+                             (hash_fn), (cmp_fn)),                                             \
      (hmap)->entries + (hmap)->hashes[EXT_HMAP_TMP_SLOT])
 
 // Returns a pointer to the existing entry with the given key, inserting a new
@@ -1683,8 +1688,8 @@ EXT_STATIC_ASSERT(((EXT_HMAP_INIT_CAPACITY) & (EXT_HMAP_INIT_CAPACITY - 1)) == 0
 #define EXT_HMAP_IS_EMPTY(h) ((h) == EXT_HMAP_EMPTY_MARK)
 #define EXT_HMAP_IS_VALID(h) (!EXT_HMAP_IS_EMPTY(h) && !EXT_HMAP_IS_TOMB(h))
 
-void ext__hmap_grow_(void **entries, size_t entries_sz, size_t **hashes, size_t *cap,
-                     Ext_Allocator **a);
+void *ext__hmap_grow_(void *entries, size_t entries_sz, size_t **hashes, size_t *cap,
+                      Ext_Allocator **a);
 
 #define ext__hmap_tmp_(map) ((map)->entries[EXT_HMAP_TMP_SLOT])
 
@@ -1743,7 +1748,7 @@ static inline void *ext__hmap_next_(const void *entries, const size_t *hashes, c
 #define EXT_ROTATE_LEFT(val, n)  (((val) << (n)) | ((val) >> (EXT_SIZET_BITS - (n))))
 #define EXT_ROTATE_RIGHT(val, n) (((val) >> (n)) | ((val) << (EXT_SIZET_BITS - (n))))
 
-static inline size_t ext_hash_cstr_(const char *str) {
+static inline size_t ext__hash_cstr_(const char *str) {
     const size_t seed = 2147483647;
     size_t hash = seed;
     while(*str) hash = EXT_ROTATE_LEFT(hash, 9) + (unsigned char)*str++;
@@ -1777,7 +1782,7 @@ typedef int EXT_SIPHASH_2_4_can_only_be_used_in_64_bit_builds[sizeof(size_t) == 
                                  // do..while(0) and sizeof()==
 #endif
 
-static inline size_t ext_siphash_bytes_(const void *p, size_t len, size_t seed) {
+static inline size_t ext__siphash_bytes_(const void *p, size_t len, size_t seed) {
     unsigned char *d = (unsigned char *)p;
     size_t i, j;
     size_t v0, v1, v2, v3, data;
@@ -1860,7 +1865,7 @@ static inline size_t ext_siphash_bytes_(const void *p, size_t len, size_t seed) 
 #endif
 }
 
-static inline size_t ext_hash_bytes_(const void *p, size_t len) {
+static inline size_t ext__hash_bytes_(const void *p, size_t len) {
     const size_t seed = 2147483647;
 #ifdef EXT_SIPHASH_2_4
     return stbds_siphash_bytes(p, len, seed);
@@ -1897,7 +1902,7 @@ static inline size_t ext_hash_bytes_(const void *p, size_t len) {
         hash = (~hash) + (hash << 18);
         return hash;
     } else {
-        return ext_siphash_bytes_(p, len, seed);
+        return ext__siphash_bytes_(p, len, seed);
     }
 #endif
 }
@@ -1914,16 +1919,16 @@ static inline size_t ext_hash_bytes_(const void *p, size_t len) {
 //   cmp_fn(entry_a, entry_b, key_sz) — returns 0 on a key match.
 
 static inline size_t ext__hmap_hash_bytes_(const void *entry, size_t key_sz) {
-    return ext_hash_bytes_(entry, key_sz);
+    return ext__hash_bytes_(entry, key_sz);
 }
 static inline size_t ext__hmap_hash_cstr_(const void *entry, size_t key_sz) {
     (void)key_sz;
-    return ext_hash_cstr_(*(const char *const *)entry);
+    return ext__hash_cstr_(*(const char *const *)entry);
 }
 static inline size_t ext__hmap_hash_ss_(const void *entry, size_t key_sz) {
     (void)key_sz;
     const Ext_StringSlice *ss = (const Ext_StringSlice *)entry;
-    return ext_hash_bytes_(ss->data, ss->size);
+    return ext__hash_bytes_(ss->data, ss->size);
 }
 static inline int ext__hmap_cmp_bytes_(const void *ea, const void *eb, size_t key_sz) {
     return memcmp(ea, eb, key_sz);
@@ -3555,41 +3560,42 @@ exit:;
 // -----------------------------------------------------------------------------
 // SECTION: Hashmap
 //
-void ext__hmap_grow_(void **entries, size_t entries_sz, size_t **hashes, size_t *cap,
-                     Ext_Allocator **a) {
+void *ext__hmap_grow_(void *entries, size_t entries_sz, size_t **hashes, size_t *cap,
+                      Ext_Allocator **a) {
     size_t newcap = *cap ? (*cap + 1) * 2 : EXT_HMAP_INIT_CAPACITY;
-    size_t newsz = (newcap + 1) * entries_sz;
-    size_t pad = EXT_ALIGN_PAD(newsz, sizeof(size_t));
-    size_t totalsz = newsz + pad + sizeof(size_t) * (newcap + 1);
+    size_t new_size = (newcap + 1) * entries_sz;
+    size_t pad = EXT_ALIGN_PAD(new_size, sizeof(size_t));
+    size_t total_size = new_size + pad + sizeof(size_t) * (newcap + 1);
     if(!*a) *a = ext_context->alloc;
-    void *newentries = ext_allocator_alloc(*a, totalsz);
-    size_t *newhashes = (size_t *)((char *)newentries + newsz + pad);
-    EXT_ASSERT(((uintptr_t)newhashes & (sizeof(size_t) - 1)) == 0,
-               "newhashes allocation is not aligned");
-    memset(newhashes, 0, sizeof(size_t) * (newcap + 1));
+
+    void *new_entries = ext_allocator_alloc(*a, total_size);
+    size_t *new_hashes = (size_t *)((char *)new_entries + new_size + pad);
+    EXT_ASSERT(((uintptr_t)new_hashes & (sizeof(size_t) - 1)) == 0,
+               "new_hashes allocation is not aligned");
+    memset(new_hashes, 0, sizeof(size_t) * (newcap + 1));
     if(*cap > 0) {
         for(size_t i = 1; i <= *cap + 1; i++) {
             size_t hash = (*hashes)[i];
             if(EXT_HMAP_IS_VALID(hash)) {
                 size_t newidx = (hash & (newcap - 1));
-                while(!EXT_HMAP_IS_EMPTY(newhashes[newidx + 1])) {
+                while(!EXT_HMAP_IS_EMPTY(new_hashes[newidx + 1])) {
                     newidx = ((newidx + 1) & (newcap - 1));
                 }
-                memcpy((char *)newentries + (newidx + 1) * entries_sz,
-                       (char *)(*entries) + i * entries_sz, entries_sz);
-                newhashes[newidx + 1] = hash;
+                memcpy((char *)new_entries + (newidx + 1) * entries_sz,
+                       (char *)(entries) + i * entries_sz, entries_sz);
+                new_hashes[newidx + 1] = hash;
             }
         }
     }
-    if(*entries) {
-        size_t sz = (*cap + 2) * entries_sz;
-        size_t pad = EXT_ALIGN_PAD(sz, sizeof(size_t));
-        size_t totalsz = sz + pad + sizeof(size_t) * (*cap + 2);
-        ext_allocator_free(*a, *entries, totalsz);
+    if(entries) {
+        size_t size = (*cap + 2) * entries_sz;
+        size_t pad = EXT_ALIGN_PAD(size, sizeof(size_t));
+        size_t total_size = size + pad + sizeof(size_t) * (*cap + 2);
+        ext_allocator_free(*a, entries, total_size);
     }
-    *entries = newentries;
-    *hashes = newhashes;
+    *hashes = new_hashes;
     *cap = newcap - 1;
+    return new_entries;
 }
 #endif  // EXTLIB_IMPL
 

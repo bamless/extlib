@@ -1,4 +1,3 @@
-CC      ?= $(CC)
 CFLAGS  ?= -Wall -Wextra -Wno-override-init -std=c99 -ggdb
 LDFLAGS ?=
 
