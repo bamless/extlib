@@ -56,12 +56,19 @@ On **Windows** this maps to `__declspec(dllexport)` / `__declspec(dllimport)`.
 On **GCC / Clang** both use `__attribute__((visibility("default")))`.
 On unrecognized compilers/platforms the attribute expands to nothing.
 
+On GCC / Clang it is strongly recommended to compile the shared library with
+`-fvisibility=hidden`. Without it all symbols are public by default, defeating the purpose of
+`EXT_API` and leaking internal symbols into the DSO's export table. `EXT_API` then selectively
+restores visibility only for the symbols that are meant to be public.
+
 A typical CMake setup looks like:
 
 ```cmake
-# Shared library target — EXTLIB_IMPL builds the implementation and exports symbols
+# Shared library target — EXTLIB_IMPL builds the implementation and exports symbols.
+# -fvisibility=hidden ensures only EXT_API-marked symbols are exported on GCC/Clang.
 add_library(extlib SHARED extlib_impl.c)
 target_compile_definitions(extlib PRIVATE EXTLIB_IMPL EXTLIB_SHARED_EXPORT)
+target_compile_options(extlib PRIVATE $<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-fvisibility=hidden>)
 
 # Consumer target — only EXTLIB_SHARED_EXPORT is defined so symbols are imported
 target_compile_definitions(my_app PRIVATE EXTLIB_SHARED_EXPORT)
