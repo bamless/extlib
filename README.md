@@ -32,13 +32,47 @@ Features:
 
  Configuration options:
  ```c
-#define EXTLIB_NO_SHORTHANDS // Disable shorthands names, only prefixed one will be defined
-#define EXTLIB_NO_STD        // Do not use libc functions
-#define EXTLIB_WASM          // Enable when compiling for wasm target. Implies EXTLIB_NO_STD
-#define EXTLIB_THREADSAFE    // Thread safe Context
-#define NDEBUG               // Strips runtime assertions and replaces unreachables with compiler
-                             // intrinsics
+#define EXTLIB_NO_SHORTHANDS  // Disable shorthands names, only prefixed one will be defined
+#define EXTLIB_NO_STD         // Do not use libc functions
+#define EXTLIB_WASM           // Enable when compiling for wasm target. Implies EXTLIB_NO_STD
+#define EXTLIB_THREADSAFE     // Thread safe Context
+#define EXTLIB_SHARED_EXPORT  // Mark all public API symbols for shared library use (see below)
+#define NDEBUG                // Strips runtime assertions and replaces unreachables with compiler
+                              // intrinsics
  ```
+
+### Building as a shared library
+
+Define `EXTLIB_SHARED_EXPORT` to enable the `EXT_API` visibility attribute on all public symbols,
+making it possible to compile extlib as a DLL or shared object.
+
+The macro behaves differently depending on whether the translation unit is building the
+implementation or consuming it:
+
+- **Implementation TU** (`EXTLIB_IMPL` defined): symbols are *exported*.
+- **Consumer TUs** (`EXTLIB_IMPL` not defined): symbols are *imported*.
+
+On **Windows** this maps to `__declspec(dllexport)` / `__declspec(dllimport)`.
+On **GCC / Clang** both use `__attribute__((visibility("default")))`.
+On unrecognized compilers/platforms the attribute expands to nothing.
+
+A typical CMake setup looks like:
+
+```cmake
+# Shared library target — EXTLIB_IMPL builds the implementation and exports symbols
+add_library(extlib SHARED extlib_impl.c)
+target_compile_definitions(extlib PRIVATE EXTLIB_IMPL EXTLIB_SHARED_EXPORT)
+
+# Consumer target — only EXTLIB_SHARED_EXPORT is defined so symbols are imported
+target_compile_definitions(my_app PRIVATE EXTLIB_SHARED_EXPORT)
+target_link_libraries(my_app extlib)
+```
+
+Where `extlib_impl.c` contains exactly:
+```c
+#define EXTLIB_IMPL
+#include "extlib.h"
+```
 
 ## Examples
 

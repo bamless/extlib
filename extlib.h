@@ -22,12 +22,20 @@
  *  ```
  *  Configuration options:
  *  ```c
- *  #define EXTLIB_NO_SHORTHANDS // Disable shorthands names, only prefixed one will be defined
- *  #define EXTLIB_NO_STD        // Do not use libc functions
- *  #define EXTLIB_WASM          // Enable when compiling for wasm target. Implies EXTLIB_NO_STD
- *  #define EXTLIB_THREADSAFE    // Thread safe Context
- *  #define NDEBUG               // Strips runtime assertions and replaces unreachables with
- *                               // compiler intrinsics
+ *  #define EXTLIB_NO_SHORTHANDS  // Disable shorthands names, only prefixed one will be defined
+ *  #define EXTLIB_NO_STD         // Do not use libc functions
+ *  #define EXTLIB_WASM           // Enable when compiling for wasm target. Implies EXTLIB_NO_STD
+ *  #define EXTLIB_THREADSAFE     // Thread safe Context
+ *  #define EXTLIB_SHARED_EXPORT  // Mark all public API symbols for shared library use. When
+ *                                // combined with `EXTLIB_IMPL` (the translation unit that
+ *                                // provides the implementation), symbols are exported. In all
+ *                                // other translation units (consumers of the library), symbols
+ *                                // are imported. On Windows this means `__declspec(dllexport)`
+ *                                // vs `__declspec(dllimport)`. On GCC/Clang both directions use
+ *                                // `__attribute__((visibility("default")))`. On unrecognized
+ *                                // compilers/platforms has no effect. See `EXT_API`.
+ *  #define NDEBUG                // Strips runtime assertions and replaces unreachables with
+ *                                // compiler intrinsics
  *  ```
  *
  *  To get more information on specific components, grep for:
@@ -44,7 +52,14 @@
  *  Changelog:
  *
  *  v2.0.2:
- *      Minor changes to `EXT_ALIGN_PAD` macro.
+ *      - Minor changes to `EXT_ALIGN_PAD` macro.
+ *      - Better strict-aliasing behaviour for `ext__hmap_grow_`.
+ *      - Added `EXTLIB_SHARED_EXPORT` option and `EXT_API` macro to support building extlib as a
+ *        shared library (.dll / .so). When `EXTLIB_SHARED_EXPORT` is defined, `EXT_API` expands to
+ *        the appropriate export attribute in the `EXTLIB_IMPL` translation unit and to the
+ *        corresponding import attribute everywhere else. All public non-inline functions,
+ *        `extern inline` declarations in `EXTLIB_IMPL`, and exported data variables are
+ *        annotated with `EXT_API`. Inline definitions in the header are left unmarked.
  *
  *  v2.0.1:
  *      Better implementations of builtin functions when compiling wasm with clang
@@ -417,6 +432,34 @@ static inline int strcmp(const char *l, const char *r) {
 #define EXT_PRINTF_FORMAT(a, b)
 #endif  // __GNUC__
 
+// Marks a function or variable as part of the public shared-library API.
+//
+// Requires EXTLIB_SHARED_EXPORT to be defined. When it is:
+//   - The translation unit that defines EXTLIB_IMPL (the implementation) exports symbols:
+//       Windows:     `__declspec(dllexport)`
+//       GCC / Clang: `__attribute__((visibility("default")))`
+//   - All other translation units (library consumers) import symbols:
+//       Windows:     `__declspec(dllimport)`
+//       GCC / Clang: `__attribute__((visibility("default")))`
+//   - Unrecognized compilers/platforms: expands to nothing in both cases.
+//
+// When EXTLIB_SHARED_EXPORT is not defined, always expands to nothing.
+#ifdef EXTLIB_SHARED_EXPORT
+#if defined(EXT_WINDOWS)
+#ifdef EXTLIB_IMPL
+#define EXT_API __declspec(dllexport)
+#else
+#define EXT_API __declspec(dllimport)
+#endif
+#elif defined(__GNUC__) || defined(__clang__)
+#define EXT_API __attribute__((visibility("default")))
+#else
+#define EXT_API
+#endif
+#else
+#define EXT_API
+#endif
+
 // Executes `start` expression at the start of the scope, and `end` expressions when it ends.
 //
 // It is implemented by exploiting how a `for` loop has an inizialization and an increment
@@ -466,8 +509,8 @@ typedef enum {
 // Custom logging function used in the context to configure logger
 typedef void (*Ext_LogFn)(Ext_LogLevel lvl, void *data, const char *fmt, va_list ap);
 // Log a message with severity level `lvl`.
-void ext_log(Ext_LogLevel lvl, const char *fmt, ...) EXT_PRINTF_FORMAT(2, 3);
-void ext_logvf(Ext_LogLevel lvl, const char *fmt, va_list ap);
+EXT_API void ext_log(Ext_LogLevel lvl, const char *fmt, ...) EXT_PRINTF_FORMAT(2, 3);
+EXT_API void ext_logvf(Ext_LogLevel lvl, const char *fmt, va_list ap);
 
 // -----------------------------------------------------------------------------
 // SECTION: Context
@@ -504,12 +547,12 @@ typedef struct Ext_Context {
 } Ext_Context;
 
 // The current context
-extern EXT_TLS Ext_Context *ext_context;
+EXT_API extern EXT_TLS Ext_Context *ext_context;
 
 // Pushes a new context to the stack, making it the current one
-void ext_push_context(Ext_Context *ctx);
+EXT_API void ext_push_context(Ext_Context *ctx);
 // Pops a context from the stack, restoring the previous one
-Ext_Context *ext_pop_context(void);
+EXT_API Ext_Context *ext_pop_context(void);
 
 // Utility macro to push/pop context between `code`
 //
@@ -675,7 +718,7 @@ inline void *ext_memdup(const void *mem, size_t size) {
 typedef struct Ext_DefaultAllocator {
     Ext_Allocator base;
 } Ext_DefaultAllocator;
-extern Ext_DefaultAllocator ext_default_allocator;
+EXT_API extern Ext_DefaultAllocator ext_default_allocator;
 
 // -----------------------------------------------------------------------------
 // SECTION: Temporary allocator
@@ -698,21 +741,21 @@ typedef struct Ext_TempAllocator {
     void *mem;
 } Ext_TempAllocator;
 // The global temp allocator
-extern EXT_TLS Ext_TempAllocator ext_temp_allocator;
+EXT_API extern EXT_TLS Ext_TempAllocator ext_temp_allocator;
 
 // Sets a new memory area for temporary allocations
-void ext_temp_set_mem(void *mem, size_t size);
+EXT_API void ext_temp_set_mem(void *mem, size_t size);
 // Allocates `size` bytes of memory from the temporary area
-void *ext_temp_alloc(size_t size);
+EXT_API void *ext_temp_alloc(size_t size);
 // Reallocates `new_size` bytes of memory from the temporary area.
 // If `*ptr` is the result of the last allocation, it resizes the allocation in-place.
 // Otherwise, it simly creates a new allocation of `new_size` and copies over the content.
-void *ext_temp_realloc(void *ptr, size_t old_size, size_t new_size);
+EXT_API void *ext_temp_realloc(void *ptr, size_t old_size, size_t new_size);
 // How much temp memory is available
-size_t ext_temp_available(void);
+EXT_API size_t ext_temp_available(void);
 // Resets the whole temporary allocator. You should prefer using `temp_checkpoint` and `temp_rewind`
 // instead of this function, so that allocations before the checkpoint remain valid.
-void ext_temp_reset(void);
+EXT_API void ext_temp_reset(void);
 // `temp_checkpoint` checkpoints the current state of the temporary allocator, and `temp_rewind`
 // rewinds the state to the saved point.
 //
@@ -732,16 +775,16 @@ void ext_temp_reset(void);
 //     return result;
 // }
 // ```
-void *ext_temp_checkpoint(void);
-void ext_temp_rewind(void *checkpoint);
+EXT_API void *ext_temp_checkpoint(void);
+EXT_API void ext_temp_rewind(void *checkpoint);
 // Copies a cstring into temp memory
-char *ext_temp_strdup(const char *str);
+EXT_API char *ext_temp_strdup(const char *str);
 // Copies a memory region of `size` bytes into temp memory
-void *ext_temp_memdup(void *mem, size_t size);
+EXT_API void *ext_temp_memdup(void *mem, size_t size);
 #ifndef EXTLIB_NO_STD
 // Allocate and format a string into temp memory
-char *ext_temp_sprintf(const char *fmt, ...) EXT_PRINTF_FORMAT(1, 2);
-char *ext_temp_vsprintf(const char *fmt, va_list ap);
+EXT_API char *ext_temp_sprintf(const char *fmt, ...) EXT_PRINTF_FORMAT(1, 2);
+EXT_API char *ext_temp_vsprintf(const char *fmt, va_list ap);
 #endif  // EXTLIB_NO_STD
 
 // -----------------------------------------------------------------------------
@@ -834,14 +877,14 @@ typedef struct Ext_Arena {
 #define ext_arena_pop_array(a, T, n, ptr) ext_arena_free(a, ptr, sizeof(T) * (n))
 
 // Allocates `size` bytes in the arena
-void *ext_arena_alloc(Ext_Arena *a, size_t size);
+EXT_API void *ext_arena_alloc(Ext_Arena *a, size_t size);
 // Reallocates `new_size` bytes. If `ptr` is the pointer of the last allocation, it tries to grow
 // the allocation in-place. Otherwise, it allocates a new region of `new_size` bytes and copies the
 // data over.
-void *ext_arena_realloc(Ext_Arena *a, void *ptr, size_t old_size, size_t new_size);
+EXT_API void *ext_arena_realloc(Ext_Arena *a, void *ptr, size_t old_size, size_t new_size);
 // Frees a previous allocation of `size` bytes. It only actually frees data if `ptr` is the pointer
 // of the last allocation, as only the last one can be freed in-place.
-void ext_arena_free(Ext_Arena *a, void *ptr, size_t size);
+EXT_API void ext_arena_free(Ext_Arena *a, void *ptr, size_t size);
 // `arena_checkpoint` checkpoints the current state of the arena, and `arena_rewind` rewinds the
 // state to the saved point.
 //
@@ -861,22 +904,22 @@ void ext_arena_free(Ext_Arena *a, void *ptr, size_t size);
 //     return result;
 // }
 // ```
-Ext_ArenaCheckpoint ext_arena_checkpoint(const Ext_Arena *a);
-void ext_arena_rewind(Ext_Arena *a, Ext_ArenaCheckpoint checkpoint);
+EXT_API Ext_ArenaCheckpoint ext_arena_checkpoint(const Ext_Arena *a);
+EXT_API void ext_arena_rewind(Ext_Arena *a, Ext_ArenaCheckpoint checkpoint);
 // Resets the whole arena.
-void ext_arena_reset(Ext_Arena *a);
+EXT_API void ext_arena_reset(Ext_Arena *a);
 // Frees all memory allocated in the arena and resets it.
-void ext_arena_destroy(Ext_Arena *a);
+EXT_API void ext_arena_destroy(Ext_Arena *a);
 // Gets the currently allocated bytes in the arena
-size_t ext_arena_get_allocated(const Ext_Arena *a);
+EXT_API size_t ext_arena_get_allocated(const Ext_Arena *a);
 // Copies a cstring by allocating it in the arena
-char *ext_arena_strdup(Ext_Arena *a, const char *str);
+EXT_API char *ext_arena_strdup(Ext_Arena *a, const char *str);
 // Copies a memory region of `size` bytes by allocating it in the arena
-void *ext_arena_memdup(Ext_Arena *a, const void *mem, size_t size);
+EXT_API void *ext_arena_memdup(Ext_Arena *a, const void *mem, size_t size);
 #ifndef EXTLIB_NO_STD
 // Allocate and format a string into the arena
-char *ext_arena_sprintf(Ext_Arena *a, const char *fmt, ...) EXT_PRINTF_FORMAT(2, 3);
-char *ext_arena_vsprintf(Ext_Arena *a, const char *fmt, va_list ap);
+EXT_API char *ext_arena_sprintf(Ext_Arena *a, const char *fmt, ...) EXT_PRINTF_FORMAT(2, 3);
+EXT_API char *ext_arena_vsprintf(Ext_Arena *a, const char *fmt, va_list ap);
 #endif
 
 // -----------------------------------------------------------------------------
@@ -1163,22 +1206,23 @@ typedef struct {
 #define ext_sb_reserve_exact(sb, requested_cap) ext_array_reserve_exact(sb, requested_cap)
 
 // Replaces all characters appearing in `to_replace` with `replacement`.
-void ext_sb_replace(Ext_StringBuffer *sb, size_t start, const char *to_replace, char replacement);
+EXT_API void ext_sb_replace(Ext_StringBuffer *sb, size_t start, const char *to_replace,
+                            char replacement);
 // Converts all characters in the buffer to uppercase in-place
-void ext_sb_to_upper(Ext_StringBuffer *sb);
+EXT_API void ext_sb_to_upper(Ext_StringBuffer *sb);
 // Converts all characters in the buffer to lowercase in-place
-void ext_sb_to_lower(Ext_StringBuffer *sb);
+EXT_API void ext_sb_to_lower(Ext_StringBuffer *sb);
 // Reverses the string buffer in-place
-void ext_sb_reverse(Ext_StringBuffer *sb);
+EXT_API void ext_sb_reverse(Ext_StringBuffer *sb);
 // Transforms the string buffer to a cstring, by appending NUL and shrinking it to fit its size.
 // The string buffer is reset after this operation.
 // BEWARE: you still need to free the returned string with the stringbuffer's allocator after this
 // operation, otherwise memory will be leaked
-char *ext_sb_to_cstr(Ext_StringBuffer *sb);
+EXT_API char *ext_sb_to_cstr(Ext_StringBuffer *sb);
 #ifndef EXTLIB_NO_STD
 // Appends a formatted string to the string buffer
-int ext_sb_appendf(Ext_StringBuffer *sb, const char *fmt, ...) EXT_PRINTF_FORMAT(2, 3);
-int ext_sb_appendvf(Ext_StringBuffer *sb, const char *fmt, va_list ap);
+EXT_API int ext_sb_appendf(Ext_StringBuffer *sb, const char *fmt, ...) EXT_PRINTF_FORMAT(2, 3);
+EXT_API int ext_sb_appendvf(Ext_StringBuffer *sb, const char *fmt, va_list ap);
 #endif  // EXTLIB_NO_STD
 
 // -----------------------------------------------------------------------------
@@ -1237,9 +1281,9 @@ typedef struct {
 // the buffer.
 #define ext_sb_to_ss(sb) (ext_ss_from((sb).items, (sb).size))
 // Creates a new string slice from a region of memory of `size` bytes
-Ext_StringSlice ext_ss_from(const void *mem, size_t size);
+EXT_API Ext_StringSlice ext_ss_from(const void *mem, size_t size);
 // Creates a new string slice from a cstring
-Ext_StringSlice ext_ss_from_cstr(const char *str);
+EXT_API Ext_StringSlice ext_ss_from_cstr(const char *str);
 // Splits the string slice once on `delim`. The input string slice will be modified to point to the
 // character after `delim`. The split prefix will be returned as a new string slice.
 //
@@ -1251,92 +1295,92 @@ Ext_StringSlice ext_ss_from_cstr(const char *str);
 //      printf("Word: "SS_Fmt"\n", SS_Arg(word));
 //  }
 // ```
-Ext_StringSlice ext_ss_split_once(Ext_StringSlice *ss, char delim);
+EXT_API Ext_StringSlice ext_ss_split_once(Ext_StringSlice *ss, char delim);
 // Same as `split_once` but from the end of the slice
-Ext_StringSlice ext_ss_rsplit_once(Ext_StringSlice *ss, char delim);
+EXT_API Ext_StringSlice ext_ss_rsplit_once(Ext_StringSlice *ss, char delim);
 // Same as split_once, but splits on any character preset in `set`
-Ext_StringSlice ext_ss_split_once_any(Ext_StringSlice *ss, const char *set);
+EXT_API Ext_StringSlice ext_ss_split_once_any(Ext_StringSlice *ss, const char *set);
 // Same as rsplit_once, but splits on any character preset in `set`
-Ext_StringSlice ext_ss_rsplit_once_any(Ext_StringSlice *ss, const char *set);
+EXT_API Ext_StringSlice ext_ss_rsplit_once_any(Ext_StringSlice *ss, const char *set);
 // Same as `split_once` but matches all whitespace characters as defined in libc's `isspace`.
-Ext_StringSlice ext_ss_split_once_ws(Ext_StringSlice *ss);
+EXT_API Ext_StringSlice ext_ss_split_once_ws(Ext_StringSlice *ss);
 // Same as `rsplit_once` but matches all whitespace characters as defined in libc's `isspace`.
-Ext_StringSlice ext_ss_rsplit_once_ws(Ext_StringSlice *ss);
+EXT_API Ext_StringSlice ext_ss_rsplit_once_ws(Ext_StringSlice *ss);
 // Same as `split_once` but on a multi character delimiter
-Ext_StringSlice ext_ss_split_once_cstr(Ext_StringSlice *ss, const char *delim);
+EXT_API Ext_StringSlice ext_ss_split_once_cstr(Ext_StringSlice *ss, const char *delim);
 // Same as `rsplit_once` but on a multi character delimiter
-Ext_StringSlice ext_ss_rsplit_once_cstr(Ext_StringSlice *ss, const char *delim);
+EXT_API Ext_StringSlice ext_ss_rsplit_once_cstr(Ext_StringSlice *ss, const char *delim);
 // Finds the first occurence of `c` starting from `offset`, or -1 if not found
-ptrdiff_t ext_ss_find_char(Ext_StringSlice ss, char c, size_t offset);
+EXT_API ptrdiff_t ext_ss_find_char(Ext_StringSlice ss, char c, size_t offset);
 // Like `ss_find_char`, but finds the last occurence starting from offset.
-ptrdiff_t ext_ss_rfind_char(Ext_StringSlice ss, char c, size_t offset);
+EXT_API ptrdiff_t ext_ss_rfind_char(Ext_StringSlice ss, char c, size_t offset);
 // Like `ss_find_char`, but finds the first occurence of `needle` starting from `offset`.
-ptrdiff_t ext_ss_find(Ext_StringSlice ss, Ext_StringSlice needle, size_t offset);
+EXT_API ptrdiff_t ext_ss_find(Ext_StringSlice ss, Ext_StringSlice needle, size_t offset);
 // Like `ss_rfind_char`, but finds the last occurence of `needle` starting from `offset`.
-ptrdiff_t ext_ss_rfind(Ext_StringSlice ss, Ext_StringSlice needle, size_t offset);
+EXT_API ptrdiff_t ext_ss_rfind(Ext_StringSlice ss, Ext_StringSlice needle, size_t offset);
 // Like `ss_find`, but takes a C string needle.
-ptrdiff_t ext_ss_find_cstr(Ext_StringSlice ss, const char *needle, size_t offset);
+EXT_API ptrdiff_t ext_ss_find_cstr(Ext_StringSlice ss, const char *needle, size_t offset);
 // Like `ss_rfind`, but takes a C string needle.
-ptrdiff_t ext_ss_rfind_cstr(Ext_StringSlice ss, const char *needle, size_t offset);
+EXT_API ptrdiff_t ext_ss_rfind_cstr(Ext_StringSlice ss, const char *needle, size_t offset);
 // Returns a new string slice with all white space removed from the start
-Ext_StringSlice ext_ss_trim_start(Ext_StringSlice ss);
+EXT_API Ext_StringSlice ext_ss_trim_start(Ext_StringSlice ss);
 // Returns a new string slice with all white space removed from the end
-Ext_StringSlice ext_ss_trim_end(Ext_StringSlice ss);
+EXT_API Ext_StringSlice ext_ss_trim_end(Ext_StringSlice ss);
 // Returns a new string slice with all white space removed from both ends
-Ext_StringSlice ext_ss_trim(Ext_StringSlice ss);
+EXT_API Ext_StringSlice ext_ss_trim(Ext_StringSlice ss);
 // Returns a new string slice starting from `n` bytes into `ss`.
-Ext_StringSlice ext_ss_cut(Ext_StringSlice ss, size_t n);
+EXT_API Ext_StringSlice ext_ss_cut(Ext_StringSlice ss, size_t n);
 // Returns a new string slice of size `n`.
-Ext_StringSlice ext_ss_trunc(Ext_StringSlice ss, size_t n);
+EXT_API Ext_StringSlice ext_ss_trunc(Ext_StringSlice ss, size_t n);
 // Returns a substring starting at `start` of at most `len` bytes
-Ext_StringSlice ext_ss_substr(Ext_StringSlice ss, size_t start, size_t len);
+EXT_API Ext_StringSlice ext_ss_substr(Ext_StringSlice ss, size_t start, size_t len);
 // Returns true if the given string slice starts with `prefix`
-bool ext_ss_starts_with(Ext_StringSlice ss, Ext_StringSlice prefix);
+EXT_API bool ext_ss_starts_with(Ext_StringSlice ss, Ext_StringSlice prefix);
 // Returns true if the given string slice ends with `suffix`
-bool ext_ss_ends_with(Ext_StringSlice ss, Ext_StringSlice suffix);
+EXT_API bool ext_ss_ends_with(Ext_StringSlice ss, Ext_StringSlice suffix);
 // Returns a new string slice with `prefix` removed, or the original slice if prefix is not present
-Ext_StringSlice ext_ss_strip_prefix(Ext_StringSlice ss, Ext_StringSlice prefix);
+EXT_API Ext_StringSlice ext_ss_strip_prefix(Ext_StringSlice ss, Ext_StringSlice prefix);
 // Returns a new string slice with `suffix` removed, or the original slice if suffix is not present
-Ext_StringSlice ext_ss_strip_suffix(Ext_StringSlice ss, Ext_StringSlice suffix);
+EXT_API Ext_StringSlice ext_ss_strip_suffix(Ext_StringSlice ss, Ext_StringSlice suffix);
 // Like `ss_strip_prefix`, but takes a C string prefix
-Ext_StringSlice ext_ss_strip_prefix_cstr(Ext_StringSlice ss, const char *prefix);
+EXT_API Ext_StringSlice ext_ss_strip_prefix_cstr(Ext_StringSlice ss, const char *prefix);
 // Like `ss_strip_suffix`, but takes a C string suffix
-Ext_StringSlice ext_ss_strip_suffix_cstr(Ext_StringSlice ss, const char *suffix);
+EXT_API Ext_StringSlice ext_ss_strip_suffix_cstr(Ext_StringSlice ss, const char *suffix);
 // memcompares two string slices
-int ext_ss_cmp(Ext_StringSlice s1, Ext_StringSlice s2);
+EXT_API int ext_ss_cmp(Ext_StringSlice s1, Ext_StringSlice s2);
 // Returns true if the two string slices are equal
-bool ext_ss_eq(Ext_StringSlice s1, Ext_StringSlice s2);
+EXT_API bool ext_ss_eq(Ext_StringSlice s1, Ext_StringSlice s2);
 // Returns true if the two string slices are equal, ignoring ASCII case
-bool ext_ss_eq_ignore_case(Ext_StringSlice a, Ext_StringSlice b);
+EXT_API bool ext_ss_eq_ignore_case(Ext_StringSlice a, Ext_StringSlice b);
 // Case-insensitive comparison (returns <0, 0, >0 like memcmp)
-int ext_ss_cmp_ignore_case(Ext_StringSlice a, Ext_StringSlice b);
+EXT_API int ext_ss_cmp_ignore_case(Ext_StringSlice a, Ext_StringSlice b);
 // Returns true if the given string slice starts with `prefix`, ignoring ASCII case
-bool ext_ss_starts_with_ignore_case(Ext_StringSlice ss, Ext_StringSlice prefix);
+EXT_API bool ext_ss_starts_with_ignore_case(Ext_StringSlice ss, Ext_StringSlice prefix);
 // Returns true if the given string slice ends with `suffix`, ignoring ASCII case
-bool ext_ss_ends_with_ignore_case(Ext_StringSlice ss, Ext_StringSlice suffix);
+EXT_API bool ext_ss_ends_with_ignore_case(Ext_StringSlice ss, Ext_StringSlice suffix);
 // Like `ss_starts_with_ignore_case`, but takes a C string prefix
-bool ext_ss_starts_with_ignore_case_cstr(Ext_StringSlice ss, const char *prefix);
+EXT_API bool ext_ss_starts_with_ignore_case_cstr(Ext_StringSlice ss, const char *prefix);
 // Like `ss_ends_with_ignore_case`, but takes a C string suffix
-bool ext_ss_ends_with_ignore_case_cstr(Ext_StringSlice ss, const char *suffix);
+EXT_API bool ext_ss_ends_with_ignore_case_cstr(Ext_StringSlice ss, const char *suffix);
 // Creates a cstring from the string slice by allocating memory using the current context allocator,
 // NUL terminating it, and copying over its data.
-char *ext_ss_to_cstr(Ext_StringSlice ss);
+EXT_API char *ext_ss_to_cstr(Ext_StringSlice ss);
 // Creates a cstring from the string slice by allocating memory using the temp allocator,
 // NUL terminating it, and copying over its data.
-char *ext_ss_to_cstr_temp(Ext_StringSlice ss);
+EXT_API char *ext_ss_to_cstr_temp(Ext_StringSlice ss);
 // Creates a cstring from the string slice by allocating memory using the provided allocator,
 // NUL terminating it, and copying over its data.
-char *ext_ss_to_cstr_alloc(Ext_StringSlice ss, Ext_Allocator *a);
+EXT_API char *ext_ss_to_cstr_alloc(Ext_StringSlice ss, Ext_Allocator *a);
 // Returns the filename component of `path` (after the last separator)
-Ext_StringSlice ext_ss_basename(Ext_StringSlice path);
+EXT_API Ext_StringSlice ext_ss_basename(Ext_StringSlice path);
 // Returns the directory component of `path` (before the last separator), or empty if none
-Ext_StringSlice ext_ss_dirname(Ext_StringSlice path);
+EXT_API Ext_StringSlice ext_ss_dirname(Ext_StringSlice path);
 // Returns the file extension (including the dot), or empty if none
-Ext_StringSlice ext_ss_extension(Ext_StringSlice path);
+EXT_API Ext_StringSlice ext_ss_extension(Ext_StringSlice path);
 // Appends a path component to the buffer, inserting a separator if needed
-void ext_sb_append_path(Ext_StringBuffer *sb, Ext_StringSlice component);
+EXT_API void ext_sb_append_path(Ext_StringBuffer *sb, Ext_StringSlice component);
 // Like `sb_append_path`, but takes a C string component
-void ext_sb_append_path_cstr(Ext_StringBuffer *sb, const char *component);
+EXT_API void ext_sb_append_path_cstr(Ext_StringBuffer *sb, const char *component);
 
 // -----------------------------------------------------------------------------
 // SECTION: IO
@@ -1356,50 +1400,50 @@ typedef struct {
     size_t size, capacity;
     Ext_Allocator *allocator;
 } Ext_Paths;
-void ext_free_paths(Ext_Paths *paths);
+EXT_API void ext_free_paths(Ext_Paths *paths);
 
 // Reads an entire file into the provided string buffer. Retuns true on succes, false on failure.
-bool ext_read_file(const char *path, Ext_StringBuffer *sb);
+EXT_API bool ext_read_file(const char *path, Ext_StringBuffer *sb);
 // Writes `data` into the file at `path`. The file is overwritten if it exists. Returns true on
 // success, false on failure
-bool ext_write_file(const char *path, const void *data, size_t size);
+EXT_API bool ext_write_file(const char *path, const void *data, size_t size);
 // Reads a line from a file into the provided string buffer. Returns 1 if there are more lines to be
 // read, 0 if there aren't or -1 on error.
-int ext_read_line(FILE *f, Ext_StringBuffer *sb);
+EXT_API int ext_read_line(FILE *f, Ext_StringBuffer *sb);
 // Reads a directory into the `paths` array. Returns true on success, false on failure
-bool ext_read_dir(const char *path, Ext_Paths *paths);
+EXT_API bool ext_read_dir(const char *path, Ext_Paths *paths);
 // Creates a directory. Does nothing if the directory already exists
-bool ext_create_dir(const char *path);
+EXT_API bool ext_create_dir(const char *path);
 // Deletes a directory recursively (i.e. even if not empty)
-bool ext_delete_dir_recursively(const char *path);
+EXT_API bool ext_delete_dir_recursively(const char *path);
 // Returns the type of the file at `path`. On error returns EXT_FILE_ERR (-1).
-Ext_FileType ext_get_file_type(const char *path);
+EXT_API Ext_FileType ext_get_file_type(const char *path);
 // Renames a file (or directory)
-bool ext_rename_file(const char *old_path, const char *new_path);
+EXT_API bool ext_rename_file(const char *old_path, const char *new_path);
 // Deletes a file (or empty directory)
-bool ext_delete_file(const char *path);
+EXT_API bool ext_delete_file(const char *path);
 // Gets the current working directory using the current context allocator. Returns NULL on failure.
-char *ext_get_cwd(void);
+EXT_API char *ext_get_cwd(void);
 // Gets the current working directory using the temporary allocator. Returns NULL on failure.
-char *ext_get_cwd_temp(void);
+EXT_API char *ext_get_cwd_temp(void);
 // Gets the current working directory using the provided allocator. Returns NULL on failure.
-char *ext_get_cwd_alloc(Ext_Allocator *a);
+EXT_API char *ext_get_cwd_alloc(Ext_Allocator *a);
 // Sets the current working directory
-bool ext_set_cwd(const char *cwd);
+EXT_API bool ext_set_cwd(const char *cwd);
 // Transforms `path` into an absolute path. Allocates using the provided allocator.
-char *ext_get_abs_path_alloc(const char *path, Ext_Allocator *a);
+EXT_API char *ext_get_abs_path_alloc(const char *path, Ext_Allocator *a);
 // Transforsms `path` into an absolute path. Allocates using the temp allocator.
-char *ext_get_abs_path_temp(const char *path);
+EXT_API char *ext_get_abs_path_temp(const char *path);
 // Transforsms `path` into an absolute path. Allocates using the current context allocator.
-char *ext_get_abs_path(const char *path);
+EXT_API char *ext_get_abs_path(const char *path);
 // Executes the given command using the system shell. Returns the exit code of the process.
-int ext_cmd(const char *cmd);
+EXT_API int ext_cmd(const char *cmd);
 // Executes the given command using the system shell, appending its stdout into the provided string
 // buffer. Returns the exit code of the process
-int ext_cmd_read(const char *cmd, Ext_StringBuffer *sb);
+EXT_API int ext_cmd_read(const char *cmd, Ext_StringBuffer *sb);
 // Executes the given command using the system shell, writing into its stdin the data provided in
 // `data`. Returns the exit code of the process.
-int ext_cmd_write(const char *cmd, const void *data, size_t size);
+EXT_API int ext_cmd_write(const char *cmd, const void *data, size_t size);
 #endif  // EXTLIB_NO_STD
 
 // -----------------------------------------------------------------------------
@@ -1688,8 +1732,8 @@ EXT_STATIC_ASSERT(((EXT_HMAP_INIT_CAPACITY) & (EXT_HMAP_INIT_CAPACITY - 1)) == 0
 #define EXT_HMAP_IS_EMPTY(h) ((h) == EXT_HMAP_EMPTY_MARK)
 #define EXT_HMAP_IS_VALID(h) (!EXT_HMAP_IS_EMPTY(h) && !EXT_HMAP_IS_TOMB(h))
 
-void *ext__hmap_grow_(void *entries, size_t entries_sz, size_t **hashes, size_t *cap,
-                      Ext_Allocator **a);
+EXT_API void *ext__hmap_grow_(void *entries, size_t entries_sz, size_t **hashes, size_t *cap,
+                              Ext_Allocator **a);
 
 #define ext__hmap_tmp_(map) ((map)->entries[EXT_HMAP_TMP_SLOT])
 
@@ -2075,20 +2119,20 @@ Ext_Context *ext_pop_context(void) {
 // SECTION: Allocators
 //
 
-extern inline void *ext_allocator_alloc(Ext_Allocator *a, size_t size);
-extern inline void *ext_allocator_realloc(Ext_Allocator *a, void *ptr, size_t old_sz,
-                                          size_t new_sz);
-extern inline void ext_allocator_free(Ext_Allocator *a, void *ptr, size_t size);
+EXT_API extern inline void *ext_allocator_alloc(Ext_Allocator *a, size_t size);
+EXT_API extern inline void *ext_allocator_realloc(Ext_Allocator *a, void *ptr, size_t old_sz,
+                                                  size_t new_sz);
+EXT_API extern inline void ext_allocator_free(Ext_Allocator *a, void *ptr, size_t size);
 
-extern inline void *ext_alloc(size_t size);
-extern inline void *ext_realloc(void *ptr, size_t old_sz, size_t new_sz);
-extern inline void ext_free(void *ptr, size_t size);
+EXT_API extern inline void *ext_alloc(size_t size);
+EXT_API extern inline void *ext_realloc(void *ptr, size_t old_sz, size_t new_sz);
+EXT_API extern inline void ext_free(void *ptr, size_t size);
 
-extern inline char *ext_allocator_strdup(Ext_Allocator *a, const char *s);
-extern inline void *ext_allocator_memdup(Ext_Allocator *a, const void *mem, size_t size);
+EXT_API extern inline char *ext_allocator_strdup(Ext_Allocator *a, const char *s);
+EXT_API extern inline void *ext_allocator_memdup(Ext_Allocator *a, const void *mem, size_t size);
 
-extern inline char *ext_strdup(const char *s);
-extern inline void *ext_memdup(const void *mem, size_t size);
+EXT_API extern inline char *ext_strdup(const char *s);
+EXT_API extern inline void *ext_memdup(const void *mem, size_t size);
 
 #ifdef EXTLIB_WASM
 extern char __heap_base[];
@@ -3599,9 +3643,10 @@ void *ext__hmap_grow_(void *entries, size_t entries_sz, size_t **hashes, size_t 
 }
 #endif  // EXTLIB_IMPL
 
-void *ext__arena_alloc_wrap_(Ext_Allocator *a, size_t size);
-void *ext__arena_realloc_wrap_(Ext_Allocator *a, void *ptr, size_t old_size, size_t new_size);
-void ext__arena_free_wrap_(Ext_Allocator *a, void *ptr, size_t size);
+EXT_API void *ext__arena_alloc_wrap_(Ext_Allocator *a, size_t size);
+EXT_API void *ext__arena_realloc_wrap_(Ext_Allocator *a, void *ptr, size_t old_size,
+                                       size_t new_size);
+EXT_API void ext__arena_free_wrap_(Ext_Allocator *a, void *ptr, size_t size);
 
 #if ((defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)) || defined(__GNUC__)) && \
     !defined(EXTLIB_NO_STD)
