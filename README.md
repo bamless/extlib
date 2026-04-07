@@ -31,7 +31,7 @@ Features:
 > library headers to disable names without prefixes.
 
  Configuration options:
- ```c
+```c
 #define EXTLIB_NO_SHORTHANDS  // Disable shorthands names, only prefixed one will be defined
 #define EXTLIB_NO_STD         // Do not use libc functions
 #define EXTLIB_WASM           // Enable when compiling for wasm target. Implies EXTLIB_NO_STD
@@ -39,7 +39,7 @@ Features:
 #define EXTLIB_SHARED_EXPORT  // Mark all public API symbols for shared library use (see below)
 #define NDEBUG                // Strips runtime assertions and replaces unreachables with compiler
                               // intrinsics
- ```
+```
 
 ### Building as a shared library
 

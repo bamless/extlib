@@ -1,4 +1,6 @@
-CFLAGS  ?= -Wall -Wextra -Wno-override-init -std=c99 -ggdb
+# CC = clang
+CFLAGS  ?= -Wall -Wextra -Wstrict-aliasing=2 -Wno-override-init -std=c99 -ggdb
+# -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -fno-optimize-sibling-calls
 LDFLAGS ?=
 
 .PHONY: all
