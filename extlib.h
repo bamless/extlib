@@ -1543,7 +1543,7 @@ EXT_API int ext_cmd_write(const char *cmd, const void *data, size_t size);
 // ```
 #define Ext_HashMap(K, V)          \
     struct {                       \
-        Ext_Entry(K, V)  *entries; \
+        Ext_Entry(K, V) * entries; \
         uint8_t *buckets;          \
         size_t size, capacity;     \
         size_t tombstones;         \
@@ -1588,6 +1588,7 @@ EXT_API int ext_cmd_write(const char *cmd, const void *data, size_t size);
             (hmap)->entries = ext__hmap_grow_((hmap)->entries, sizeof(*(hmap)->entries),          \
                                               sizeof(ext__hmap_tmp_entry_(hmap).key),             \
                                               (hmap)->size, &(hmap)->buckets, &(hmap)->capacity,  \
+                                              &(hmap)->tombstones,                                \
                                               (Ext_Allocator **)&(hmap)->allocator, hash_fn);     \
         }                                                                                         \
         ext__hmap_tmp_entry_(hmap).key = (entry_key);                                             \
@@ -1603,10 +1604,7 @@ EXT_API int ext_cmd_write(const char *cmd, const void *data, size_t size);
             if(EXT_HMAP_IS_TOMB(bucket)) ext__hmap_tomb_count_(hmap)--;                           \
         }                                                                                         \
         (hmap)->entries[idx] = ext__hmap_tmp_entry_(hmap);                                        \
-        (hmap)->buckets[idx] = fp;                                                                \
-        if(idx < EXT__HMAP_NUM_LANES - 1) {                                                       \
-            (hmap)->buckets[(hmap)->capacity + 1 + idx] = (uint8_t)fp;                            \
-        }                                                                                         \
+        ext__hmap_bucket_set_((hmap)->buckets, (hmap)->capacity, idx, fp);                        \
     } while(0)
 
 // Returns a pointer to the entry with the given key (custom hash/cmp), or NULL.
@@ -1649,6 +1647,7 @@ EXT_API int ext_cmd_write(const char *cmd, const void *data, size_t size);
          ? ((hmap)->entries = ext__hmap_grow_((hmap)->entries, sizeof(*(hmap)->entries),           \
                                               sizeof(ext__hmap_tmp_entry_(hmap).key),              \
                                               (hmap)->size, &(hmap)->buckets, &(hmap)->capacity,   \
+                                              &(hmap)->tombstones,                                 \
                                               (Ext_Allocator **)&(hmap)->allocator, (hash_fn)),    \
             0)                                                                                     \
          : 0,                                                                                      \
@@ -1678,22 +1677,19 @@ EXT_API int ext_cmd_write(const char *cmd, const void *data, size_t size);
 // Deletes an entry from the hashmap.
 // See ext_hmap_put_ex for hash_fn / cmp_fn conventions.
 // You probably want ext_hmap_delete / ext_hmap_delete_cstr / ext_hmap_delete_ss instead.
-#define ext_hmap_delete_ex(hmap, entry_key, hash_fn, cmp_fn)                              \
-    do {                                                                                  \
-        if(!(hmap)->size) break;                                                          \
-        ext__hmap_tmp_entry_(hmap).key = (entry_key);                                     \
-        ext__hmap_find_((hmap)->entries, (hmap)->buckets, (hmap)->capacity,               \
-                        sizeof(*(hmap)->entries), sizeof(ext__hmap_tmp_entry_(hmap).key), \
-                        (hash_fn), (cmp_fn), &(hmap)->tmp_idx);                           \
-        size_t idx = ext__hmap_tmp_idx_(hmap);                                            \
-        if(EXT_HMAP_IS_VALID((hmap)->buckets[idx])) {                                     \
-            (hmap)->buckets[idx] = EXT_HMAP_TOMB_MARK;                                    \
-            if(idx < EXT__HMAP_NUM_LANES - 1) {                                           \
-                (hmap)->buckets[(hmap)->capacity + 1 + idx] = EXT_HMAP_TOMB_MARK;         \
-            }                                                                             \
-            (hmap)->size--;                                                               \
-            ext__hmap_tomb_count_(hmap)++;                                                \
-        }                                                                                 \
+#define ext_hmap_delete_ex(hmap, entry_key, hash_fn, cmp_fn)                                   \
+    do {                                                                                       \
+        if(!(hmap)->size) break;                                                               \
+        ext__hmap_tmp_entry_(hmap).key = (entry_key);                                          \
+        ext__hmap_find_((hmap)->entries, (hmap)->buckets, (hmap)->capacity,                    \
+                        sizeof(*(hmap)->entries), sizeof(ext__hmap_tmp_entry_(hmap).key),      \
+                        (hash_fn), (cmp_fn), &(hmap)->tmp_idx);                                \
+        size_t idx = ext__hmap_tmp_idx_(hmap);                                                 \
+        if(EXT_HMAP_IS_VALID((hmap)->buckets[idx])) {                                          \
+            ext__hmap_bucket_set_((hmap)->buckets, (hmap)->capacity, idx, EXT_HMAP_TOMB_MARK); \
+            (hmap)->size--;                                                                    \
+            ext__hmap_tomb_count_(hmap)++;                                                     \
+        }                                                                                      \
     } while(0)
 
 // Puts an entry into the hashmap. Keys are compared byte-for-byte with memcmp.
@@ -1721,24 +1717,24 @@ EXT_API int ext_cmd_write(const char *cmd, const void *data, size_t size);
     ext_hmap_delete_ex(hmap, entry_key, ext__hmap_hash_ss_, ext__hmap_cmp_ss_)
 
 // Clears the hashmap
-#define ext_hmap_clear(hmap)                                                        \
-    do {                                                                            \
+#define ext_hmap_clear(hmap)                                                           \
+    do {                                                                               \
         memset((hmap)->buckets, 0xFF, (hmap)->capacity + 1 + EXT__HMAP_NUM_LANES - 1); \
-        (hmap)->size = 0;                                                           \
-        (hmap)->tombstones = 0;                                                     \
+        (hmap)->size = 0;                                                              \
+        (hmap)->tombstones = 0;                                                        \
     } while(0)
 
 // Frees and clears the hashmap
-#define ext_hmap_free(hmap)                                                               \
-    do {                                                                                  \
-        if((hmap)->entries) {                                                             \
-            void *raw_entries = (char *)(hmap)->entries -                                 \
-                                EXT__HMAP_HIDDEN_SLOTS * sizeof(*(hmap)->entries);        \
-            size_t totalsz = ext_hmap_compute_allocation_size((hmap)->capacity + 1,       \
-                                                              sizeof(*(hmap)->entries));  \
-            ext_allocator_free((Ext_Allocator *)(hmap)->allocator, raw_entries, totalsz); \
-        }                                                                                 \
-        memset((hmap), 0, sizeof(*(hmap)));                                               \
+#define ext_hmap_free(hmap)                                                                \
+    do {                                                                                   \
+        if((hmap)->entries) {                                                              \
+            void *raw_entries = (char *)(hmap)->entries -                                  \
+                                EXT__HMAP_HIDDEN_SLOTS * sizeof(*(hmap)->entries);         \
+            size_t totalsz = ext__hmap_compute_allocation_size_((hmap)->capacity + 1,      \
+                                                                sizeof(*(hmap)->entries)); \
+            ext_allocator_free((Ext_Allocator *)(hmap)->allocator, raw_entries, totalsz);  \
+        }                                                                                  \
+        memset((hmap), 0, sizeof(*(hmap)));                                                \
     } while(0)
 
 // Iterate all entries in the hashmap
@@ -2043,7 +2039,7 @@ static inline int ext__hmap_cmp_ss_(const void *ea, const void *eb, size_t key_s
     return ext_ss_cmp(*(const Ext_StringSlice *)ea, *(const Ext_StringSlice *)eb);
 }
 
-static size_t ext_hmap_compute_allocation_size(size_t capacity, size_t entry_sz) {
+static inline size_t ext__hmap_compute_allocation_size_(size_t capacity, size_t entry_sz) {
     size_t raw_entry_cap = capacity + EXT__HMAP_HIDDEN_SLOTS;
     size_t new_entry_size = raw_entry_cap * entry_sz;
     // Keep `NUM_LANES - 1` mirror buckets to the end of the bucket array, as to guarantee we can
@@ -2052,36 +2048,45 @@ static size_t ext_hmap_compute_allocation_size(size_t capacity, size_t entry_sz)
     return new_entry_size + bucket_size;
 }
 
-static inline uint64_t ext_hmap_chunk_load(const uint8_t *ptr) {
+static inline uint64_t ext__hmap_chunk_load_(const uint8_t *ptr) {
     uint64_t c;
     memcpy(&c, ptr, sizeof(c));
     return c;
 }
 
-static inline uint32_t ext_hmap_chunk_match(uint64_t chunk, uint8_t fp) {
+static inline uint32_t ext__hmap_chunk_match_(uint64_t chunk, uint8_t fp) {
     uint64_t x = chunk ^ (0x0101010101010101ULL * fp);
     uint64_t m = (x - 0x0101010101010101ULL) & ~x & 0x8080808080808080ULL;
     return (uint8_t)(m * 0x0002040810204081ULL >> 56);
 }
 
-static inline uint32_t ext_hmap_chunk_empty(uint64_t chunk) {
+static inline uint32_t ext__hmap_chunk_empty_(uint64_t chunk) {
     // Detect 0xFF bytes by applying the zero-byte trick to ~chunk (since ~0xFF == 0x00).
     uint64_t inv = ~chunk;
-    uint64_t m   = (inv - 0x0101010101010101ULL) & ~inv & 0x8080808080808080ULL;
+    uint64_t m = (inv - 0x0101010101010101ULL) & ~inv & 0x8080808080808080ULL;
     return (uint8_t)(m * 0x0002040810204081ULL >> 56);
 }
 
 // Split a raw hash into a slot index and a 7-bit fingerprint.
+// Write a bucket byte and keep the mirror region in sync.
+// Slots 0..NUM_LANES-2 are mirrored at cap+1..cap+NUM_LANES-1 so that chunk
+// loads near the end of the array always read valid data.
+static inline void ext__hmap_bucket_set_(uint8_t *buckets, size_t cap, size_t idx, uint8_t val) {
+    buckets[idx] = val;
+    if(idx < EXT__HMAP_NUM_LANES - 1) buckets[cap + 1 + idx] = val;
+}
+
 // The low 7 bits become the fingerprint (0x00–0x7F, bit 7 always clear so it
 // stays disjoint from TOMB_MARK (0x80) and EMPTY_MARK (0xFF)).
 // The upper bits drive the slot so fingerprint and position are independent.
-static inline uint8_t ext_hmap_hash_split(size_t hash, size_t cap, size_t *out_slot) {
+static inline uint8_t ext__hmap_hash_split_(size_t hash, size_t cap, size_t *out_slot) {
     *out_slot = (hash >> 7) & cap;
     return (uint8_t)(hash & 0x7F);
 }
 
 static inline void *ext__hmap_grow_(void *entries, size_t entry_sz, size_t key_sz, size_t size,
-                                    uint8_t **buckets, size_t *cap, Ext_Allocator **a,
+                                    uint8_t **buckets, size_t *cap, size_t *tombstones,
+                                    Ext_Allocator **a,
                                     size_t (*hash_fn)(const void *, size_t)) {
     size_t old_cap = *cap + 1;
     // Only re-hash without growing if live entries (size, excluding tombstones) fit within
@@ -2091,7 +2096,7 @@ static inline void *ext__hmap_grow_(void *entries, size_t entry_sz, size_t key_s
                          : old_cap;
     size_t new_cap_mask = new_cap - 1;
 
-    size_t total_size = ext_hmap_compute_allocation_size(new_cap, entry_sz);
+    size_t total_size = ext__hmap_compute_allocation_size_(new_cap, entry_sz);
 
     if(!*a) *a = ext_context->alloc;
     void *raw_entries = ext_allocator_alloc(*a, total_size);
@@ -2107,7 +2112,7 @@ static inline void *ext__hmap_grow_(void *entries, size_t entry_sz, size_t key_s
         uint8_t *old_buckets = *buckets;
 
         // Rehash all live entries into the new table. The new table is tombstone-free,
-        // so insertion only needs to find the first empty lane in probe order.
+        // so a plain linear probe for the first empty (0xFF) slot is sufficient.
         for(size_t i = 0; i < old_cap; i++) {
             if(!EXT_HMAP_IS_VALID(old_buckets[i])) continue;
 
@@ -2115,19 +2120,14 @@ static inline void *ext__hmap_grow_(void *entries, size_t entry_sz, size_t key_s
             size_t hash = hash_fn(entry, key_sz);
 
             size_t slot;
-            uint8_t fp = ext_hmap_hash_split(hash, new_cap_mask, &slot);
+            uint8_t fp = ext__hmap_hash_split_(hash, new_cap_mask, &slot);
 
-            for(;;) {
-                uint64_t chunk = ext_hmap_chunk_load(new_buckets + slot);
-                uint32_t empties = ext_hmap_chunk_empty(chunk);
-                if(empties) {
-                    size_t new_slot = (slot + (size_t)__builtin_ctz(empties)) & new_cap_mask;
-                    new_buckets[new_slot] = fp;
-                    memcpy((char *)new_entries + new_slot * entry_sz, entry, entry_sz);
-                    break;
-                }
-                slot = (slot + EXT__HMAP_NUM_LANES) & new_cap_mask;
+            while(!EXT_HMAP_IS_EMPTY(new_buckets[slot])) {
+                slot = (slot + 1) & new_cap_mask;
             }
+
+            new_buckets[slot] = fp;
+            memcpy((char *)new_entries + slot * entry_sz, entry, entry_sz);
         }
 
         // Mirror the first NUM_LANES-1 bucket bytes to the end of the array so that
@@ -2137,12 +2137,13 @@ static inline void *ext__hmap_grow_(void *entries, size_t entry_sz, size_t key_s
         // Free the old allocation. The old entries pointer is EXT__HMAP_HIDDEN_SLOTS past the raw
         // base.
         void *old_raw = (char *)entries - EXT__HMAP_HIDDEN_SLOTS * entry_sz;
-        size_t old_total = ext_hmap_compute_allocation_size(old_cap, entry_sz);
+        size_t old_total = ext__hmap_compute_allocation_size_(old_cap, entry_sz);
         ext_allocator_free(*a, old_raw, old_total);
     }
 
-    *buckets = new_buckets;
-    *cap = new_cap_mask;
+    *buckets    = new_buckets;
+    *cap        = new_cap_mask;
+    *tombstones = 0;
     return new_entries;
 }
 
@@ -2156,14 +2157,14 @@ static inline uint8_t ext__hmap_find_(const void *entries, uint8_t *buckets, siz
     size_t hash = hash_fn(key, key_sz);
 
     size_t slot;
-    uint8_t fp = ext_hmap_hash_split(hash, cap, &slot);
+    uint8_t fp = ext__hmap_hash_split_(hash, cap, &slot);
     size_t tomb_idx = SIZE_MAX;
 
     for(size_t i = 0; i <= cap; i += EXT__HMAP_NUM_LANES) {
-        uint64_t chunk = ext_hmap_chunk_load(buckets + slot);
-        uint32_t matches = ext_hmap_chunk_match(chunk, fp);
-        uint32_t tombstones = ext_hmap_chunk_match(chunk, EXT_HMAP_TOMB_MARK);
-        uint32_t empties = ext_hmap_chunk_empty(chunk);
+        uint64_t chunk = ext__hmap_chunk_load_(buckets + slot);
+        uint32_t matches = ext__hmap_chunk_match_(chunk, fp);
+        uint32_t tombstones = ext__hmap_chunk_match_(chunk, EXT_HMAP_TOMB_MARK);
+        uint32_t empties = ext__hmap_chunk_empty_(chunk);
 
         // Check all fp matches for an existing key
         uint32_t m = matches;
@@ -2212,14 +2213,9 @@ static inline void ext__hmap_find_default_(const void *entries, uint8_t *buckets
     uint8_t fp = ext__hmap_find_(entries, buckets, cap, entry_sz, key_sz, hash_fn, cmp_fn, out_idx);
     if(!EXT_HMAP_IS_VALID(buckets[*out_idx])) {
         if(EXT_HMAP_IS_TOMB(buckets[*out_idx])) (*tombstones)--;
-
         // Copy the tmp entry (at entries[EXT__HMAP_TMP_ENTRY_SLOT]) into the newly claimed slot.
         memcpy((char *)entries + *out_idx * entry_sz, (const char *)entries - entry_sz, entry_sz);
-
-        buckets[*out_idx] = fp;
-        // Be sure to sync fingerprint mirrors
-        if(*out_idx < EXT__HMAP_NUM_LANES - 1) buckets[cap + 1 + *out_idx] = fp;
-
+        ext__hmap_bucket_set_(buckets, cap, *out_idx, fp);
         (*size)++;
     }
 }
