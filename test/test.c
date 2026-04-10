@@ -1478,8 +1478,9 @@ typedef struct {
 
 typedef struct {
     IntEntry *entries;
-    size_t *hashes;
-    size_t size, capacity;
+    uint8_t *buckets;
+    size_t size, tombstones, capacity;
+    size_t tmp_idx;
     Allocator *allocator;
 } IntMap;
 
@@ -1627,8 +1628,9 @@ typedef struct {
 
 typedef struct {
     StrEntry *entries;
-    size_t *hashes;
-    size_t capacity, size;
+    uint8_t *buckets;
+    size_t capacity, tombstones, size;
+    size_t tmp_idx;
     Allocator *allocator;
 } StrMap;
 
@@ -1697,8 +1699,9 @@ typedef struct {
 
 typedef struct {
     SliceEntry *entries;
-    size_t *hashes;
-    size_t capacity, size;
+    uint8_t *buckets;
+    size_t capacity, tombstones, size;
+    size_t tmp_idx;
     Allocator *allocator;
 } SliceMap;
 
