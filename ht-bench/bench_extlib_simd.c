@@ -1,4 +1,4 @@
-// bench_extlib.c — Benchmarks for the extlib.h hashmap.
+// bench_extlib_simd.c — Benchmarks for the extlib.h simd hashmap.
 //
 // Usage: ./bench_extlib <benchmark> [N]
 //

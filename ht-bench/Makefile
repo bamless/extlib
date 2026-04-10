@@ -1,7 +1,7 @@
 CC      = gcc
 CFLAGS  = -std=c11 -O3 -Wall -Wextra -march=native
 
-BINS    = bench_ht bench_extlib
+BINS    = bench_extlib_simd bench_extlib
 
 # Default N for all benchmark targets.  Override on the command line:
 #   make bench-insert-int N=1000000
@@ -38,7 +38,7 @@ BENCH_TARGETS = $(addprefix bench-,$(BENCHMARKS))
 
 all: $(BINS)
 
-bench_ht: bench_ht.c ../extlib.h
+bench_extlib_simd: bench_extlib_simd.c ../extlib.h
 	$(CC) $(CFLAGS) -o $@ $<
 
 bench_extlib: bench_extlib.c extlib.h
@@ -49,17 +49,17 @@ bench_extlib: bench_extlib.c extlib.h
 check: all
 	@echo "=== Sanity check (N=1000) ==="
 	@for bm in $(BENCHMARKS); do \
-	    a=$$(./bench_ht     $$bm 1000); \
-	    b=$$(./bench_extlib  $$bm 1000); \
-	    printf "%-22s  ht=%-12s extlib=%s\n" "$$bm" "$$a" "$$b"; \
+	    a=$$(./bench_extlib_simd $$bm 1000); \
+	    b=$$(./bench_extlib      $$bm 1000); \
+	    printf "%-22s  extlib (simd)=%-12s extlib=%s\n" "$$bm" "$$a" "$$b"; \
 	done
 
 # Individual scenario targets: `make bench-insert-int`, `make bench-mixed-int`, …
 # Each runs hyperfine for that one scenario and exits.
 $(BENCH_TARGETS): bench-% : all
 	hyperfine --warmup $(WARMUP) $(HFLAGS) \
-	    --command-name "ht/$*"     "./bench_ht     $* $(N)" \
-	    --command-name "extlib/$*" "./bench_extlib  $* $(N)"
+	    --command-name "extlib (simd)/$*" "./bench_extlib_simd $* $(N)" \
+	    --command-name "extlib/$*"        "./bench_extlib      $* $(N)"
 
 # Run all scenarios back-to-back.
 bench: $(BENCH_TARGETS)
@@ -79,8 +79,8 @@ run: all
 	    echo ">>> $$bm"; \
 	    hyperfine --shell=none --warmup $(WARMUP) --runs 10 $(HFLAGS) \
 	        --export-json "tmp/$$bm.json" \
-	        --command-name "ht"     "./bench_ht     $$bm $(N)" \
-	        --command-name "extlib" "./bench_extlib  $$bm $(N)"; \
+	        --command-name "extlib_simd" "./bench_extlib_simd $$bm $(N)" \
+	        --command-name "extlib"      "./bench_extlib      $$bm $(N)"; \
 	done
 
 # Render graphs from whatever JSON files are currently in tmp/.
