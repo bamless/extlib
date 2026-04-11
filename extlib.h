@@ -1,4 +1,4 @@
-/**
+/**ex
  * extlib v2.1.0 - c extended library
  *
  * Single-header-file library that provides functionality that extends the standard c library.
@@ -1995,20 +1995,27 @@ static inline size_t ext__hash_bytes_(const void *p, size_t len) {
 #endif
 }
 
+// FNV-1a for c-strings
 static inline size_t ext__hash_cstr_(const char *str) {
-    return ext__hash_bytes_(str, strlen(str));
-    // const size_t seed = 2147483647;
-    // size_t hash = seed;
-    // while(*str) hash = EXT_ROTATE_LEFT(hash, 9) + (unsigned char)*str++;
-    //// Thomas Wang 64-to-32 bit mix function, hopefully also works in 32 bits
-    // hash ^= seed;
-    // hash = (~hash) + (hash << 18);
-    // hash ^= hash ^ EXT_ROTATE_RIGHT(hash, 31);
-    // hash = hash * 21;
-    // hash ^= hash ^ EXT_ROTATE_RIGHT(hash, 11);
-    // hash += (hash << 6);
-    // hash ^= EXT_ROTATE_RIGHT(hash, 22);
-    // return hash + seed;
+    size_t hash = 14695981039346656037ull;
+    while(*str) {
+        hash ^= (unsigned char)(*str++);
+        hash *= 1099511628211ull;
+    }
+    return hash;
+    // return ext__hash_bytes_(str, strlen(str));
+    // // const size_t seed = 2147483647;
+    // // size_t hash = seed;
+    // // while(*str) hash = EXT_ROTATE_LEFT(hash, 9) + (unsigned char)*str++;
+    // //// Thomas Wang 64-to-32 bit mix function, hopefully also works in 32 bits
+    // // hash ^= seed;
+    // // hash = (~hash) + (hash << 18);
+    // // hash ^= hash ^ EXT_ROTATE_RIGHT(hash, 31);
+    // // hash = hash * 21;
+    // // hash ^= hash ^ EXT_ROTATE_RIGHT(hash, 11);
+    // // hash += (hash << 6);
+    // // hash ^= EXT_ROTATE_RIGHT(hash, 22);
+    // // return hash + seed;
 }
 
 // End of stbds.h
