@@ -1567,7 +1567,8 @@ EXT_API int ext_cmd_write(const char *cmd, const void *data, size_t size);
         V value;        \
     }
 
-#define EXT_HMAP_NEEDS_RESIZE(t) (((t)->size + (t)->tombstones) * 8 >= ((t)->capacity + 1) * 7)
+#define EXT_HMAP_NEEDS_RESIZE(t) \
+    (!(t)->entries || (((t)->size + (t)->tombstones) * 8 >= ((t)->capacity + 1) * 7))
 
 // Puts an entry into the hashmap with custom hash and compare functions.
 //
@@ -1580,7 +1581,7 @@ EXT_API int ext_cmd_write(const char *cmd, const void *data, size_t size);
 // You probably want to use ext_hmap_put / ext_hmap_put_cstr / ext_hmap_put_ss instead.
 #define ext_hmap_put_ex(hmap, entry_key, entry_val, hash_fn, cmp_fn)                              \
     do {                                                                                          \
-        if(!(hmap)->entries || EXT_HMAP_NEEDS_RESIZE(hmap)) {                                     \
+        if(EXT_HMAP_NEEDS_RESIZE(hmap)) {                                                         \
             (hmap)->entries = ext__hmap_resize_((hmap)->entries, sizeof(*(hmap)->entries),        \
                                                 sizeof(ext__hmap_tmp_entry_(hmap).key),           \
                                                 &(hmap)->size, &(hmap)->buckets,                  \
@@ -1638,7 +1639,7 @@ EXT_API int ext_cmd_write(const char *cmd, const void *data, size_t size);
 // `entry_val` when absent.
 // Refer to `ext_hmap_get_ex` for function signatures.
 #define ext_hmap_get_default_ex(hmap, entry_key, entry_val, hash_fn, cmp_fn)                       \
-    ((!(hmap)->entries || EXT_HMAP_NEEDS_RESIZE(hmap))                                             \
+    (EXT_HMAP_NEEDS_RESIZE(hmap)                                                                   \
          ? ((hmap)->entries = ext__hmap_resize_(                                                   \
                 (hmap)->entries, sizeof(*(hmap)->entries), sizeof(ext__hmap_tmp_entry_(hmap).key), \
                 &(hmap)->size, &(hmap)->buckets, &(hmap)->capacity, &(hmap)->tombstones,           \
@@ -2243,10 +2244,12 @@ static inline uint8_t ext__hmap_find_(const void *entries, uint8_t *buckets, siz
         }
 
         // Record the first tombstone we've seen across all chunks
-        uint32_t tombstones = ext__hmap_chunk_match_(chunk, EXT_HMAP_TOMB_MARK);
-        if(tomb_idx == SIZE_MAX && tombstones) {
-            int lane = __builtin_ctz(tombstones);
-            tomb_idx = (slot + lane) & cap;
+        if(tomb_idx == SIZE_MAX) {
+            uint32_t tombstones = ext__hmap_chunk_match_(chunk, EXT_HMAP_TOMB_MARK);
+            if(tombstones) {
+                int lane = __builtin_ctz(tombstones);
+                tomb_idx = (slot + lane) & cap;
+            }
         }
 
         // Empty slot: key is definitely not in the table

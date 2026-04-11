@@ -47,7 +47,7 @@ bench_extlib: bench_extlib.c extlib.h
 # Quick sanity check: run every benchmark in both binaries and compare outputs.
 # If the numeric sinks differ the workload is not equivalent.
 check: all
-	@echo "=== Sanity check (N=1000) ==="
+	@echo "=== Sanity check (N=$(N)) ==="
 	@for bm in $(BENCHMARKS); do \
 	    a=$$(./bench_extlib_simd $$bm $(N)); \
 	    b=$$(./bench_extlib      $$bm $(N)); \
