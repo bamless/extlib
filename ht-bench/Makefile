@@ -1,5 +1,5 @@
 CC      = gcc
-CFLAGS  = -std=c11 -O3 -Wall -Wextra -march=native
+CFLAGS  = -std=c11 -O3 -Wall -Wextra
 
 BINS    = bench_extlib_simd bench_extlib
 
@@ -49,8 +49,8 @@ bench_extlib: bench_extlib.c extlib.h
 check: all
 	@echo "=== Sanity check (N=1000) ==="
 	@for bm in $(BENCHMARKS); do \
-	    a=$$(./bench_extlib_simd $$bm 1000); \
-	    b=$$(./bench_extlib      $$bm 1000); \
+	    a=$$(./bench_extlib_simd $$bm $(N)); \
+	    b=$$(./bench_extlib      $$bm $(N)); \
 	    printf "%-22s  extlib (simd)=%-12s extlib=%s\n" "$$bm" "$$a" "$$b"; \
 	done
 
