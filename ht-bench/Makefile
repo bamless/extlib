@@ -1,5 +1,5 @@
 CC      = gcc
-CFLAGS  = -std=c11 -O3 -Wall -Wextra -march=native
+CFLAGS  = -std=c11 -O3 -Wall -Wextra
 
 BINS    = bench_extlib_simd bench_extlib
 
