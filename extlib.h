@@ -2172,12 +2172,36 @@ static inline void *ext__hmap_grow_(void *entries, size_t entry_sz, size_t key_s
 
     size_t new_size = 0;
     if(entries) {
-        for(size_t i = 0; i < old_cap; i++) {
-            if(!EXT_HMAP_IS_VALID((*buckets)[i])) continue;
-            void *entry = (char *)entries + i * entry_sz;
-            size_t hash = hash_fn(entry, key_sz);
-            ext__hmap_insert_fresh_(new_entries, new_buckets, entry, entry_sz, hash, new_cap_mask,
-                                    &new_size);
+        uint8_t *old_buckets = *buckets;
+
+        if(old_cap >= EXT__HMAP_NUM_LANES) {
+            // SIMD scan: load a full lane of bucket bytes per stride and derive the set of
+            // valid slots as a bitmask, so only occupied entries are visited.  This is safe
+            // because old_cap is always a power-of-2 multiple of EXT__HMAP_NUM_LANES when
+            // old_cap >= EXT__HMAP_NUM_LANES, so no chunk overruns into the mirror region.
+            uint32_t lane_mask = (uint32_t)((1ULL << EXT__HMAP_NUM_LANES) - 1);
+            for(size_t i = 0; i < old_cap; i += EXT__HMAP_NUM_LANES) {
+                ext__hmap_chunk_t chunk = ext__hmap_chunk_load_(old_buckets + i);
+                uint32_t valid = ~ext__hmap_chunk_non_valid_(chunk) & lane_mask;
+                while(valid) {
+                    int lane = __builtin_ctz(valid);
+                    void *entry = (char *)entries + (i + (size_t)lane) * entry_sz;
+                    size_t hash = hash_fn(entry, key_sz);
+                    ext__hmap_insert_fresh_(new_entries, new_buckets, entry, entry_sz, hash,
+                                           new_cap_mask, &new_size);
+                    valid &= valid - 1;
+                }
+            }
+        } else {
+            // Scalar fallback for tiny tables where old_cap < EXT__HMAP_NUM_LANES. A SIMD
+            // chunk load would extend into the mirror region and double-count entries there.
+            for(size_t i = 0; i < old_cap; i++) {
+                if(!EXT_HMAP_IS_VALID(old_buckets[i])) continue;
+                void *entry = (char *)entries + i * entry_sz;
+                size_t hash = hash_fn(entry, key_sz);
+                ext__hmap_insert_fresh_(new_entries, new_buckets, entry, entry_sz, hash,
+                                       new_cap_mask, &new_size);
+            }
         }
 
         // Free the old allocation. The old entries pointer is EXT__HMAP_HIDDEN_SLOTS past the raw
