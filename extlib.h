@@ -1,5 +1,5 @@
 /**
- * extlib v2.1.1 - c extended library
+ * extlib v2.1.2 - c extended library
  *
  * Single-header-file library that provides functionality that extends the standard c library.
  * Features:
@@ -50,6 +50,10 @@
  *      SECTION: IO
  *
  *  Changelog:
+ *
+ *  v2.1.2:
+ *      - Minor changes to `EXT__SUPPRESS_UNUSED_FUNC_BEGIN_`. Now it suppresses unused static
+ *        inline warnings more accurately when using clang on win32
  *
  *  v2.1.1:
  *      - Now the hashmap grows only when actual live entries (i.e. not
@@ -203,13 +207,13 @@
 #define EXT_POSIX
 #endif
 
-#if defined(_MSC_VER)
-#define EXT__SUPPRESS_UNUSED_FUNC_BEGIN_ __pragma(warning(push)) __pragma(warning(disable : 4505))
-#define EXT__SUPPRESS_UNUSED_FUNC_END_   __pragma(warning(pop))
-#elif defined(__GNUC__)
+#if defined(__GNUC__) || defined(__clang__)
 #define EXT__SUPPRESS_UNUSED_FUNC_BEGIN_ \
     _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wunused-function\"")
 #define EXT__SUPPRESS_UNUSED_FUNC_END_ _Pragma("GCC diagnostic pop")
+#elif defined(_MSC_VER)
+#define EXT__SUPPRESS_UNUSED_FUNC_BEGIN_ __pragma(warning(push)) __pragma(warning(disable : 4505))
+#define EXT__SUPPRESS_UNUSED_FUNC_END_   __pragma(warning(pop))
 #else
 #define EXT__SUPPRESS_UNUSED_FUNC_BEGIN_
 #define EXT__SUPPRESS_UNUSED_FUNC_END_
