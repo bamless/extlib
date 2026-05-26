@@ -718,9 +718,9 @@ CTEST(sb, to_cstr) {
 CTEST(sb, appendf) {
     StringBuffer sb = {0};
     int res = sb_appendf(&sb, "%s:%d", "test.c", 494);
-    const char *expected = "test.c:429";
+    const char *expected = "test.c:494";
     ASSERT_TRUE(res == (int)strlen(expected));
-    ASSERT_TRUE(memcmp(expected, sb.items, strlen(expected)));
+    ASSERT_TRUE(memcmp(expected, sb.items, strlen(expected)) == 0);
     sb_free(&sb);
 }
 #endif
