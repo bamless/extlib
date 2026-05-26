@@ -692,8 +692,8 @@ typedef struct Ext_Allocator {
 #define ext_new(T)                      ext_alloc(sizeof(T))
 #define ext_new_array(T, count)         ext_alloc(sizeof(T) * count)
 #define ext_delete(T, ptr)              ext_free(ptr, sizeof(T))
-#define ext_delete_array(T, count, ptr) ext_free(ptr, sizeof(T) * count);
-#define ext_clone(T, ptr)               ext_memdup(ptr, sizeof(T));
+#define ext_delete_array(T, count, ptr) ext_free(ptr, sizeof(T) * count)
+#define ext_clone(T, ptr)               ext_memdup(ptr, sizeof(T))
 // Similar to above, but work with any Ext_Allocator
 #define ext_allocator_new(a, T)                      ext_allocator_alloc(a, sizeof(T))
 #define ext_allocator_new_array(a, T, count)         ext_allocator_alloc(a, sizeof(T) * count)
