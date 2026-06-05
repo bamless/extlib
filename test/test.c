@@ -235,7 +235,7 @@ CTEST(arena, alloc_realloc_free) {
     int *i = arena_alloc(&a, sizeof(int));
     *i = 42;
     ASSERT_TRUE(arena_get_allocated(&a) >= sizeof(int));
-    ASSERT_TRUE(a.first_page && a.first_page == a.last_page);
+    ASSERT_TRUE(a.used_pages && a.used_pages == a.current_page);
     int *new_i = arena_realloc(&a, i, sizeof(int), sizeof(int) * 20);
     ASSERT_TRUE(*new_i == 42);
     ASSERT_TRUE(i == new_i);
@@ -257,8 +257,9 @@ CTEST(arena, alloc_realloc_free) {
     ASSERT_TRUE(arena_get_allocated(&a) < old_pos);
 
     arena_reset(&a);
-    ASSERT_TRUE(a.first_page != NULL);
-    ASSERT_TRUE(arena_get_allocated(&a) == EXT_ALIGN_PAD(a.first_page->data, a.alignment));
+    ASSERT_TRUE(a.used_pages == NULL && a.current_page == NULL);
+    ASSERT_TRUE(a.free_pages != NULL);
+    ASSERT_TRUE(arena_get_allocated(&a) == 0);
 
     arena_destroy(&a);
     ASSERT_TRUE(allocated == 0);
@@ -276,7 +277,7 @@ CTEST(arena, alignment) {
     int *i = arena_alloc(&a, sizeof(int));
     ASSERT_TRUE((intptr_t)i % 128 == 0);
     ASSERT_TRUE(arena_get_allocated(&a) ==
-                EXT_ALIGN_UP(sizeof(int), 128) + EXT_ALIGN_PAD(a.last_page->data, a.alignment));
+                EXT_ALIGN_UP(sizeof(int), 128) + EXT_ALIGN_PAD(a.current_page->data, a.alignment));
     int *new_i = arena_realloc(&a, i, sizeof(int), sizeof(int) * 10);
     ASSERT_TRUE(i == new_i);
     arena_alloc(&a, 1);
@@ -284,7 +285,8 @@ CTEST(arena, alignment) {
     ASSERT_TRUE(i != new_i);
     ASSERT_TRUE((intptr_t)new_i % 128 == 0);
     arena_reset(&a);
-    ASSERT_TRUE(arena_get_allocated(&a) == EXT_ALIGN_PAD(a.last_page->data, a.alignment));
+    ASSERT_TRUE(a.used_pages == NULL && a.current_page == NULL);
+    ASSERT_TRUE(arena_get_allocated(&a) == 0);
     arena_destroy(&a);
     ASSERT_TRUE(allocated == 0);
 }
@@ -335,8 +337,9 @@ CTEST(arena, reset) {
     ASSERT_TRUE(arena_get_allocated(&a) > 0);
 
     arena_reset(&a);
-    ASSERT_TRUE(arena_get_allocated(&a) == EXT_ALIGN_PAD(a.first_page->data, a.alignment));
-    ASSERT_TRUE(a.first_page == a.last_page);
+    ASSERT_TRUE(arena_get_allocated(&a) == 0);
+    ASSERT_TRUE(a.used_pages == NULL && a.current_page == NULL);
+    ASSERT_TRUE(a.free_pages != NULL);
 
     for(int i = 0; i < 5000; i++) {
         arena_sprintf(&a, "Mem %d", i);
@@ -344,6 +347,28 @@ CTEST(arena, reset) {
 
     arena_destroy(&a);
     temp_reset();
+}
+
+CTEST(arena, reset_reuses_first_usable_free_page) {
+    Arena a = make_arena();
+
+    void *large = arena_alloc(&a, a.page_size * 2);
+    ASSERT_TRUE(large != NULL);
+    ArenaPage *large_page = a.current_page;
+
+    void *small = arena_alloc(&a, 64);
+    ASSERT_TRUE(small != NULL);
+    ArenaPage *normal_page = a.current_page;
+    ASSERT_TRUE(normal_page != large_page);
+    ASSERT_TRUE(normal_page->size < large_page->size);
+
+    arena_reset(&a);
+    small = arena_alloc(&a, 64);
+    ASSERT_TRUE(small != NULL);
+    ASSERT_TRUE(a.current_page == normal_page);
+
+    arena_destroy(&a);
+    ASSERT_TRUE(allocated == 0);
 }
 
 CTEST(arena, rewind) {
@@ -355,7 +380,7 @@ CTEST(arena, rewind) {
 
     ASSERT_TRUE(arena_get_allocated(&a) > 0);
 
-    ArenaPage *last_page = a.last_page;
+    ArenaPage *last_page = a.current_page;
     size_t old_pos = arena_get_allocated(&a);
     ArenaCheckpoint c = arena_checkpoint(&a);
 
@@ -364,11 +389,41 @@ CTEST(arena, rewind) {
     }
 
     arena_rewind(&a, c);
-    ASSERT_TRUE(a.last_page == last_page);
+    ASSERT_TRUE(a.current_page == last_page);
     ASSERT_TRUE(arena_get_allocated(&a) == old_pos);
 
     arena_destroy(&a);
     temp_reset();
+}
+
+CTEST(arena, rewind_reuses_freed_pages) {
+    Arena a = make_arena();
+
+    arena_alloc(&a, 32);
+    ArenaCheckpoint c = arena_checkpoint(&a);
+    ArenaPage *checkpoint_page = a.current_page;
+    size_t old_pos = arena_get_allocated(&a);
+
+    void *large = arena_alloc(&a, a.page_size * 2);
+    ASSERT_TRUE(large != NULL);
+    ArenaPage *freed_page = a.current_page;
+    ASSERT_TRUE(freed_page != checkpoint_page);
+
+    arena_rewind(&a, c);
+    ASSERT_TRUE(a.current_page == checkpoint_page);
+    ASSERT_TRUE(a.free_pages == freed_page);
+    ASSERT_TRUE(arena_get_allocated(&a) == old_pos);
+
+    large = arena_alloc(&a, a.page_size * 2);
+    ASSERT_TRUE(large != NULL);
+    ASSERT_TRUE(a.current_page == freed_page);
+
+    arena_rewind(&a, c);
+    ASSERT_TRUE(a.current_page == checkpoint_page);
+    ASSERT_TRUE(arena_get_allocated(&a) == old_pos);
+
+    arena_destroy(&a);
+    ASSERT_TRUE(allocated == 0);
 }
 
 CTEST(arena, checkpoint) {
@@ -391,13 +446,13 @@ CTEST(arena, checkpoint) {
     }
 
     old_pos = arena_get_allocated(&a);
-    Ext_ArenaPage *last_page = a.last_page;
+    Ext_ArenaPage *last_page = a.current_page;
     c = arena_checkpoint(&a);
     for(int i = 0; i < 5000; i++) {
         arena_sprintf(&a, "Mem %d", i);
     }
     arena_rewind(&a, c);
-    ASSERT_TRUE(a.last_page == last_page);
+    ASSERT_TRUE(a.current_page == last_page);
     ASSERT_TRUE(arena_get_allocated(&a) == old_pos);
 
     arena_destroy(&a);
@@ -419,14 +474,14 @@ CTEST(arena, no_chain) {
     ASSERT_TRUE(i != NULL);
     *i = 42;
     ASSERT_TRUE(*i == 42);
-    ASSERT_TRUE(a.first_page == a.last_page);
+    ASSERT_TRUE(a.used_pages == a.current_page);
     arena_destroy(&a);
 }
 
 CTEST(arena, reset_empty) {
     Arena a = make_arena();
     arena_reset(&a);
-    ASSERT_TRUE(a.first_page == NULL && a.last_page == NULL);
+    ASSERT_TRUE(a.used_pages == NULL && a.current_page == NULL);
 }
 
 CTEST(array, reserve) {

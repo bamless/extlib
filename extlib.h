@@ -887,7 +887,9 @@ typedef struct Ext_Arena {
     // Arena flags. See `ArenaFlags` enum
     Ext_ArenaFlags flags;
     // Private fields
-    Ext_ArenaPage *first_page, *last_page;
+    Ext_ArenaPage *used_pages;
+    Ext_ArenaPage *free_pages;
+    Ext_ArenaPage *current_page;
 } Ext_Arena;
 
 // Creates a new arena. Defined as a macro so it can be used in a const context.
@@ -2472,6 +2474,13 @@ char *ext_temp_vsprintf(const char *fmt, va_list ap) {
 #define EXT_ARENA_PAGE_SZ EXT_KiB(8)
 #endif  // EXT_ARENA_PAGE_SZ
 
+static void ext_arena_reset_page(const Ext_Arena *arena, Ext_ArenaPage *page) {
+    page->base = 0;
+    // Account for alignment of first allocation; the arena assumes every pointer
+    // starts aligned to the arena's alignment.
+    page->pos = EXT_ALIGN_PAD(page->data, arena->alignment);
+}
+
 static Ext_ArenaPage *ext_arena_new_page(Ext_Arena *arena, size_t requested_size) {
     size_t header_sz = sizeof(Ext_ArenaPage) + (arena->alignment - 1);
     size_t actual_size = requested_size + header_sz;
@@ -2497,12 +2506,21 @@ static Ext_ArenaPage *ext_arena_new_page(Ext_Arena *arena, size_t requested_size
     Ext_ArenaPage *page = ext_allocator_alloc(arena->page_allocator, page_size);
     EXT_ASSERT(page, "out of memory");
     page->next = NULL;
-    page->base = 0;
-    // Account for alignment of first allocation; the arena assumes every pointer
-    // starts aligned to the arena's alignment.
-    page->pos = EXT_ALIGN_PAD(page->data, arena->alignment);
+    ext_arena_reset_page(arena, page);
     page->size = page_size - sizeof(Ext_ArenaPage);
     return page;
+}
+
+static Ext_ArenaPage *ext_arena_get_page(Ext_Arena *arena, size_t requested_size) {
+    for(Ext_ArenaPage **free = &arena->free_pages; *free; free = &(*free)->next) {
+        Ext_ArenaPage *page = *free;
+        ext_arena_reset_page(arena, page);
+        if(page->size - page->pos < requested_size) continue;
+        *free = page->next;
+        page->next = NULL;
+        return page;
+    }
+    return ext_arena_new_page(arena, requested_size);
 }
 
 void *ext__arena_alloc_wrap_(Ext_Allocator *a, size_t size) {
@@ -2520,53 +2538,42 @@ void ext__arena_free_wrap_(Ext_Allocator *a, void *ptr, size_t size) {
 void *ext_arena_alloc(Ext_Arena *a, size_t size) {
     size = EXT_ALIGN_UP(size, a->alignment);
 
-    if(!a->last_page) {
-        EXT_ASSERT(a->first_page == NULL, "should be first allocation");
+    if(!a->current_page) {
+        EXT_ASSERT(a->used_pages == NULL, "arena should have no active pages");
         EXT_ASSERT(((a->alignment) & (a->alignment - 1)) == 0, "alignment must be a power of 2");
         if(!a->page_allocator) a->page_allocator = ext_context->alloc;
-        Ext_ArenaPage *page = ext_arena_new_page(a, size);
-        a->first_page = page;
-        a->last_page = page;
+        Ext_ArenaPage *page = ext_arena_get_page(a, size);
+        a->used_pages = page;
+        a->current_page = page;
     }
 
-    size_t available = a->last_page->size - a->last_page->pos;
+    size_t available = a->current_page->size - a->current_page->pos;
     while(available < size) {
-        Ext_ArenaPage *next_page = a->last_page->next;
-
-        if(!next_page) {
-            if(a->flags & EXT_ARENA_NO_CHAIN) {
+        if(a->flags & EXT_ARENA_NO_CHAIN) {
 #ifndef EXTLIB_NO_STD
-                ext_log(EXT_ERROR, "Not enough space in arena: available %zu, requested %zu",
-                        available, size);
-                abort();
+            ext_log(EXT_ERROR, "Not enough space in arena: available %zu, requested %zu",
+                    available, size);
+            abort();
 #else
-                EXT_ASSERT(false, "Not enough space in arena");
-                return NULL;
+            EXT_ASSERT(false, "Not enough space in arena");
+            return NULL;
 #endif
-            }
-            Ext_ArenaPage *new_page = ext_arena_new_page(a, size);
-            new_page->base = a->last_page->base + a->last_page->pos;
-
-            a->last_page->next = new_page;
-            a->last_page = new_page;
-            available = a->last_page->size - a->last_page->pos;
-            break;
-        } else {
-            // Reset the page
-            next_page->base = a->last_page->base + a->last_page->pos;
-            next_page->pos = EXT_ALIGN_PAD(next_page->data, a->alignment);
-
-            available = next_page->size - next_page->pos;
-            a->last_page = next_page;
         }
+
+        Ext_ArenaPage *page = ext_arena_get_page(a, size);
+        page->base = a->current_page->base + a->current_page->pos;
+        a->current_page->next = page;
+        a->current_page = page;
+        available = a->current_page->size - a->current_page->pos;
+        break;
     }
 
     EXT_ASSERT(available >= size, "Not enough space in arena");
 
-    void *result = a->last_page->data + a->last_page->pos;
+    void *result = a->current_page->data + a->current_page->pos;
     EXT_ASSERT(EXT_ALIGN_PAD(result, a->alignment) == 0,
                "result not aligned to the arena's alignment");
-    a->last_page->pos += size;
+    a->current_page->pos += size;
     if(a->flags & EXT_ARENA_ZERO_ALLOC) memset(result, 0, size);
 
     return result;
@@ -2575,7 +2582,7 @@ void *ext_arena_alloc(Ext_Arena *a, size_t size) {
 void *ext_arena_realloc(Ext_Arena *a, void *ptr, size_t old_size, size_t new_size) {
     EXT_ASSERT(EXT_ALIGN_PAD(ptr, a->alignment) == 0, "ptr not aligned to the arena's alignment");
 
-    Ext_ArenaPage *page = a->last_page;
+    Ext_ArenaPage *page = a->current_page;
     EXT_ASSERT(page, "No pages in arena");
 
     size_t aligned_old = EXT_ALIGN_UP(old_size, a->alignment);
@@ -2602,7 +2609,7 @@ void ext_arena_free(Ext_Arena *a, void *ptr, size_t size) {
     EXT_ASSERT(EXT_ALIGN_PAD(ptr, a->alignment) == 0,
                "ptr is not aligned to the arena's alignment");
 
-    Ext_ArenaPage *page = a->last_page;
+    Ext_ArenaPage *page = a->current_page;
     EXT_ASSERT(page, "No pages in arena");
 
     size = EXT_ALIGN_UP(size, a->alignment);
@@ -2615,13 +2622,13 @@ void ext_arena_free(Ext_Arena *a, void *ptr, size_t size) {
 }
 
 Ext_ArenaCheckpoint ext_arena_checkpoint(const Ext_Arena *a) {
-    if(!a->last_page) {
-        EXT_ASSERT(a->first_page == NULL, "arena should be empty");
+    if(!a->current_page) {
+        EXT_ASSERT(a->used_pages == NULL, "arena should have no active pages");
         return (Ext_ArenaCheckpoint){0};
     } else {
         return (Ext_ArenaCheckpoint){
-            a->last_page,
-            a->last_page->pos,
+            a->current_page,
+            a->current_page->pos,
         };
     }
 }
@@ -2631,28 +2638,46 @@ void ext_arena_rewind(Ext_Arena *a, Ext_ArenaCheckpoint checkpoint) {
         ext_arena_reset(a);
         return;
     }
-    a->last_page = checkpoint.page;
-    a->last_page->pos = checkpoint.pos;
+    for(Ext_ArenaPage *page = checkpoint.page->next, *next; page; page = next) {
+        next = page->next;
+        page->next = a->free_pages;
+        ext_arena_reset_page(a, page);
+        a->free_pages = page;
+    }
+    checkpoint.page->next = NULL;
+    a->current_page = checkpoint.page;
+    a->current_page->pos = checkpoint.pos;
 }
 
 void ext_arena_reset(Ext_Arena *a) {
-    if(!a->first_page) return;
-    a->last_page = a->first_page;
-    a->last_page->pos = EXT_ALIGN_PAD(a->last_page->data, a->alignment);
+    if(!a->used_pages) return;
+    for(Ext_ArenaPage *page = a->used_pages, *next; page; page = next) {
+        next = page->next;
+        page->next = a->free_pages;
+        ext_arena_reset_page(a, page);
+        a->free_pages = page;
+    }
+    a->used_pages = NULL;
+    a->current_page = NULL;
 }
 
 void ext_arena_destroy(Ext_Arena *a) {
-    for(Ext_ArenaPage *page = a->first_page, *next; page; page = next) {
+    for(Ext_ArenaPage *page = a->used_pages, *next; page; page = next) {
         next = page->next;
         ext_allocator_free(a->page_allocator, page, page->size + sizeof(Ext_ArenaPage));
     }
-    a->first_page = NULL;
-    a->last_page = NULL;
+    for(Ext_ArenaPage *page = a->free_pages, *next; page; page = next) {
+        next = page->next;
+        ext_allocator_free(a->page_allocator, page, page->size + sizeof(Ext_ArenaPage));
+    }
+    a->used_pages = NULL;
+    a->current_page = NULL;
+    a->free_pages = NULL;
 }
 
 size_t ext_arena_get_allocated(const Ext_Arena *a) {
-    if(!a->first_page) return 0;
-    return a->last_page->base + a->last_page->pos;
+    if(!a->current_page) return 0;
+    return a->current_page->base + a->current_page->pos;
 }
 
 char *ext_arena_strdup(Ext_Arena *a, const char *str) {
