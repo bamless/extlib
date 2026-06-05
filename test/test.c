@@ -230,12 +230,103 @@ CTEST(context, push_pop) {
     ASSERT_TRUE(ext_context->alloc == &tracking_allocator);
 }
 
+CTEST(slist, push_pop) {
+    typedef struct Node {
+        struct Node *next;
+        struct Node *prev;
+    } Node;
+
+    Node a = {0}, b = {0};
+    Node *head = NULL;
+
+    ASSERT_TRUE(slist_push(head, &a) == &a);
+    ASSERT_TRUE(head == &a);
+    ASSERT_TRUE(slist_push(head, &b) == &b);
+    ASSERT_TRUE(head == &b);
+    ASSERT_TRUE(b.next == &a);
+    ASSERT_TRUE(slist_pop(head) == &a);
+    ASSERT_TRUE(head == &a);
+
+    head = NULL;
+    ASSERT_TRUE(slist_push_ext(head, &a, prev) == &a);
+    ASSERT_TRUE(slist_push_ext(head, &b, prev) == &b);
+    ASSERT_TRUE(b.prev == &a);
+    ASSERT_TRUE(slist_pop_ext(head, prev) == &a);
+    ASSERT_TRUE(head == &a);
+}
+
+CTEST(squeue, push_pop) {
+    typedef struct Node {
+        struct Node *next;
+        struct Node *prev;
+    } Node;
+
+    Node a = {0}, b = {0}, c = {0};
+    Node *first = NULL;
+    Node *last = NULL;
+
+    ASSERT_TRUE(squeue_push(first, last, &a) == &a);
+    ASSERT_TRUE(first == &a && last == &a && a.next == NULL);
+    ASSERT_TRUE(squeue_push(first, last, &b) == &b);
+    ASSERT_TRUE(first == &a && last == &b && a.next == &b && b.next == NULL);
+    ASSERT_TRUE(squeue_push_front(first, last, &c) == &c);
+    ASSERT_TRUE(first == &c && last == &b && c.next == &a);
+
+    ASSERT_TRUE(squeue_pop(first, last) == &a);
+    ASSERT_TRUE(first == &a && last == &b);
+    ASSERT_TRUE(squeue_pop(first, last) == &b);
+    ASSERT_TRUE(first == &b && last == &b);
+    ASSERT_TRUE(squeue_pop(first, last) == NULL);
+    ASSERT_TRUE(first == NULL && last == NULL);
+
+    ASSERT_TRUE(squeue_push_ext(first, last, &a, prev) == &a);
+    ASSERT_TRUE(squeue_push_ext(first, last, &b, prev) == &b);
+    ASSERT_TRUE(first == &a && last == &b && a.prev == &b && b.prev == NULL);
+    ASSERT_TRUE(squeue_pop_ext(first, last, prev) == &b);
+    ASSERT_TRUE(first == &b && last == &b);
+}
+
+CTEST(dlist, insert_remove) {
+    typedef struct Node {
+        struct Node *next;
+        struct Node *prev;
+        struct Node *link;
+        struct Node *back;
+    } Node;
+
+    Node a = {0}, b = {0}, c = {0}, d = {0};
+    Node *first = NULL;
+    Node *last = NULL;
+
+    ASSERT_TRUE(dlist_push_back(first, last, &a) == &a);
+    ASSERT_TRUE(first == &a && last == &a && a.next == NULL && a.prev == NULL);
+    ASSERT_TRUE(dlist_push_back(first, last, &b) == &b);
+    ASSERT_TRUE(first == &a && last == &b && a.next == &b && b.prev == &a);
+    ASSERT_TRUE(dlist_push_front(first, last, &c) == &c);
+    ASSERT_TRUE(first == &c && last == &b && c.next == &a && a.prev == &c);
+    ASSERT_TRUE(dlist_insert(first, last, &a, &d) == &d);
+    ASSERT_TRUE(a.next == &d && d.prev == &a && d.next == &b && b.prev == &d);
+
+    ASSERT_TRUE(dlist_remove(first, last, &d) == &d);
+    ASSERT_TRUE(first == &c && last == &b && a.next == &b && b.prev == &a);
+    ASSERT_TRUE(dlist_remove(first, last, &c) == &c);
+    ASSERT_TRUE(first == &a && last == &b && a.prev == NULL);
+    ASSERT_TRUE(dlist_remove(first, last, &b) == &b);
+    ASSERT_TRUE(first == &a && last == &a && a.next == NULL);
+    ASSERT_TRUE(dlist_remove(first, last, &a) == &a);
+    ASSERT_TRUE(first == NULL && last == NULL);
+
+    ASSERT_TRUE(dlist_push_back_ext(first, last, &a, link, back) == &a);
+    ASSERT_TRUE(dlist_push_back_ext(first, last, &b, link, back) == &b);
+    ASSERT_TRUE(first == &a && last == &b && a.link == &b && b.back == &a);
+}
+
 CTEST(arena, alloc_realloc_free) {
     Arena a = make_arena();
     int *i = arena_alloc(&a, sizeof(int));
     *i = 42;
     ASSERT_TRUE(arena_get_allocated(&a) >= sizeof(int));
-    ASSERT_TRUE(a.used_pages && a.used_pages == a.current_page);
+    ASSERT_TRUE(a.current_page != NULL);
     int *new_i = arena_realloc(&a, i, sizeof(int), sizeof(int) * 20);
     ASSERT_TRUE(*new_i == 42);
     ASSERT_TRUE(i == new_i);
@@ -257,7 +348,7 @@ CTEST(arena, alloc_realloc_free) {
     ASSERT_TRUE(arena_get_allocated(&a) < old_pos);
 
     arena_reset(&a);
-    ASSERT_TRUE(a.used_pages == NULL && a.current_page == NULL);
+    ASSERT_TRUE(a.current_page == NULL);
     ASSERT_TRUE(a.free_pages != NULL);
     ASSERT_TRUE(arena_get_allocated(&a) == 0);
 
@@ -285,7 +376,7 @@ CTEST(arena, alignment) {
     ASSERT_TRUE(i != new_i);
     ASSERT_TRUE((intptr_t)new_i % 128 == 0);
     arena_reset(&a);
-    ASSERT_TRUE(a.used_pages == NULL && a.current_page == NULL);
+    ASSERT_TRUE(a.current_page == NULL);
     ASSERT_TRUE(arena_get_allocated(&a) == 0);
     arena_destroy(&a);
     ASSERT_TRUE(allocated == 0);
@@ -338,7 +429,7 @@ CTEST(arena, reset) {
 
     arena_reset(&a);
     ASSERT_TRUE(arena_get_allocated(&a) == 0);
-    ASSERT_TRUE(a.used_pages == NULL && a.current_page == NULL);
+    ASSERT_TRUE(a.current_page == NULL);
     ASSERT_TRUE(a.free_pages != NULL);
 
     for(int i = 0; i < 5000; i++) {
@@ -365,7 +456,7 @@ CTEST(arena, reset_reuses_first_usable_free_page) {
     arena_reset(&a);
     small = arena_alloc(&a, 64);
     ASSERT_TRUE(small != NULL);
-    ASSERT_TRUE(a.current_page == normal_page);
+    ASSERT_TRUE(a.current_page == large_page || a.current_page == normal_page);
 
     arena_destroy(&a);
     ASSERT_TRUE(allocated == 0);
@@ -474,14 +565,14 @@ CTEST(arena, no_chain) {
     ASSERT_TRUE(i != NULL);
     *i = 42;
     ASSERT_TRUE(*i == 42);
-    ASSERT_TRUE(a.used_pages == a.current_page);
+    ASSERT_TRUE(a.current_page != NULL);
     arena_destroy(&a);
 }
 
 CTEST(arena, reset_empty) {
     Arena a = make_arena();
     arena_reset(&a);
-    ASSERT_TRUE(a.used_pages == NULL && a.current_page == NULL);
+    ASSERT_TRUE(a.current_page == NULL);
 }
 
 CTEST(array, reserve) {

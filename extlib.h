@@ -1,5 +1,5 @@
 /**
- * extlib v2.1.2 - c extended library
+ * extlib v2.2.0 - c extended library
  *
  * Single-header-file library that provides functionality that extends the standard c library.
  * Features:
@@ -50,6 +50,12 @@
  *      SECTION: IO
  *
  *  Changelog:
+ *
+ *  v2.2.0:
+ *      - Tweaked arena to use an explicit free list for page reuse.
+ *      - Added linked-list helper macros for singly linked stacks, singly linked queues, and
+ *        doubly linked lists. Each family has explicit-link-field variants and shorthand variants
+ *        that assume `next`/`prev` fields.
  *
  *  v2.1.2:
  *      - Minor changes to `EXT__SUPPRESS_UNUSED_FUNC_BEGIN_`. Now it suppresses unused static
@@ -437,11 +443,6 @@ static inline int strcmp(const char *l, const char *r) {
 #endif  // ((defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)) || defined(__GNUC__))
         // && !defined(EXTLIB_NO_STD)
 
-// Returns the required padding to align `o` to `s` bytes. `s` must be a power of two.
-#define EXT_ALIGN_PAD(o, s) ((uintptr_t)(-(intptr_t)(o)) & ((s) - 1))
-// Returns `o` rounded up to the next multiple of `s`. `s` must be a power of two.
-#define EXT_ALIGN_UP(o, s) (((uintptr_t)(o) + (s) - 1) & ~((uintptr_t)(s) - 1))
-
 // Specifies minimum alignment for a variable declaration (C99-compatible)
 #if defined(_MSC_VER)
 #define EXT_ALIGNAS(n) __declspec(align(n))
@@ -450,13 +451,6 @@ static inline int strcmp(const char *l, const char *r) {
 #else
 #define EXT_ALIGNAS(n)
 #endif
-
-// Returns the number of elements of a c array
-#define EXT_ARR_SIZE(a) (sizeof(a) / sizeof(a[0]))
-
-#define EXT_KiB(n) ((size_t)(n) << 10)
-#define EXT_MiB(n) ((size_t)(n) << 20)
-#define EXT_GiB(n) ((size_t)(n) << 30)
 
 // Make the compiler check for correct arguments in format string
 #if defined(__MINGW32__) || defined(__MINGW64__)
@@ -494,6 +488,71 @@ static inline int strcmp(const char *l, const char *r) {
 #else
 #define EXT_API
 #endif
+
+// Returns the required padding to align `o` to `s` bytes. `s` must be a power of two.
+#define EXT_ALIGN_PAD(o, s) ((uintptr_t)(-(intptr_t)(o)) & ((s) - 1))
+// Returns `o` rounded up to the next multiple of `s`. `s` must be a power of two.
+#define EXT_ALIGN_UP(o, s) (((uintptr_t)(o) + (s) - 1) & ~((uintptr_t)(s) - 1))
+
+// Returns the number of elements of a c array
+#define EXT_ARR_SIZE(a) (sizeof(a) / sizeof(a[0]))
+
+#define EXT_KiB(n) ((size_t)(n) << 10)
+#define EXT_MiB(n) ((size_t)(n) << 20)
+#define EXT_GiB(n) ((size_t)(n) << 30)
+
+// -----------------------------------------------------------------------------
+// Linked lists macros
+
+// Singly linked lists (stacks)
+#define ext_slist_push_ext(head, node, next) ((node)->next = (head), (head) = (node))
+#define ext_slist_pop_ext(head, next)        ((head) = (head)->next)
+#define ext_slist_push(head, node)           ext_slist_push_ext(head, node, next)
+#define ext_slist_pop(head)                  ext_slist_pop_ext(head, next)
+
+// Singly linked queues (tail queues).
+#define ext_squeue_push_ext(first, last, node, next)                                 \
+    ((first) ? ((last)->next = (node), (last) = (node), (node)->next = NULL, (node)) \
+             : ((first) = (node), (last) = (node), (node)->next = NULL, (node)))
+#define ext_squeue_push_front_ext(first, last, node, next) \
+    ((first) ? ((node)->next = (first), (first) = (node))  \
+             : ((first) = (node), (last) = (node), (node)->next = NULL, (node)))
+#define ext_squeue_pop_ext(first, last, next) \
+    ((first) == (last) ? ((first) = NULL, (last) = NULL) : ((first) = (first)->next))
+#define ext_squeue_push(first, last, node)       ext_squeue_push_ext(first, last, node, next)
+#define ext_squeue_push_front(first, last, node) ext_squeue_push_front_ext(first, last, node, next)
+#define ext_squeue_pop(first, last)              ext_squeue_pop_ext(first, last, next)
+
+// Doubly linked lists.
+#define ext_dlist_insert_ext(first, last, prev_node, node, next, prev)                           \
+    ((first) == NULL                                                                             \
+         ? ((first) = (node), (last) = (node), (node)->next = NULL, (node)->prev = NULL, (node)) \
+     : (prev_node) == NULL ? ((node)->next = (first), (first)->prev = (node), (first) = (node),  \
+                              (node)->prev = NULL, (node))                                       \
+     : (prev_node) == (last)                                                                     \
+         ? ((last)->next = (node), (node)->prev = (last), (last) = (node), (node)->next = NULL,  \
+            (node))                                                                              \
+         : ((prev_node)->next->prev = (node), (node)->next = (prev_node)->next,                  \
+            (prev_node)->next = (node), (node)->prev = (prev_node), (node)))
+#define ext_dlist_push_back_ext(first, last, node, next, prev) \
+    ext_dlist_insert_ext(first, last, last, node, next, prev)
+#define ext_dlist_push_front_ext(first, last, node, next, prev)                                    \
+    ((first) == NULL                                                                               \
+         ? ((first) = (node), (last) = (node), (node)->next = NULL, (node)->prev = NULL, (node))   \
+         : ((node)->next = (first), (first)->prev = (node), (first) = (node), (node)->prev = NULL, \
+            (node)))
+#define ext_dlist_remove_ext(first, last, node, next, prev)             \
+    ((node) == (first) ? ((first) = (node)->next) : (first),            \
+     (node) == (last) ? ((last) = (node)->prev) : (last),               \
+     (node)->prev ? ((node)->prev->next = (node)->next) : (node)->next, \
+     (node)->next ? ((node)->next->prev = (node)->prev) : (node)->prev, (node))
+#define ext_dlist_insert(first, last, prev_node, node) \
+    ext_dlist_insert_ext(first, last, prev_node, node, next, prev)
+#define ext_dlist_push_back(first, last, node) \
+    ext_dlist_push_back_ext(first, last, node, next, prev)
+#define ext_dlist_push_front(first, last, node) \
+    ext_dlist_push_front_ext(first, last, node, next, prev)
+#define ext_dlist_remove(first, last, node) ext_dlist_remove_ext(first, last, node, next, prev)
 
 // Executes `start` expression at the start of the scope, and `end` expressions when it ends.
 //
@@ -829,7 +888,7 @@ EXT_API char *ext_temp_vsprintf(const char *fmt, va_list ap);
 
 // An allocated chunk in the arena
 typedef struct Ext_ArenaPage {
-    struct Ext_ArenaPage *next;
+    struct Ext_ArenaPage *prev;
     size_t size;
     size_t base;
     size_t pos;
@@ -861,6 +920,10 @@ typedef enum {
 // as a group, as well as enabling efficient memory management by reusing a previously reset arena.
 // `Arena` conforms to the `Allocator` interface, making it possible to use it as a context
 // allocator, or the allocator of a dynamic array or hashmap.
+// When using an arena as a context allocator, set its `page_allocator` before pushing it into the
+// context. Otherwise, the arena's first allocation would try to allocate its backing page from the
+// same arena. Extlib detects that recursive setup at runtime and aborts instead of recursing
+// indefinitely.
 //
 // USAGE
 // ```c
@@ -878,6 +941,8 @@ typedef enum {
 typedef struct Ext_Arena {
     Ext_Allocator base;
     // `Allocator` used to allocate pages. By default uses the current context allocator.
+    // Set this explicitly before pushing a fresh arena as a context allocator; an arena cannot
+    // allocate its own pages from itself.
     Ext_Allocator *page_allocator;
     // The alignment of the allocations returned by the arena. By default is
     // `EXT_DEFAULT_ALIGNMENT`.
@@ -887,7 +952,6 @@ typedef struct Ext_Arena {
     // Arena flags. See `ArenaFlags` enum
     Ext_ArenaFlags flags;
     // Private fields
-    Ext_ArenaPage *used_pages;
     Ext_ArenaPage *free_pages;
     Ext_ArenaPage *current_page;
 } Ext_Arena;
@@ -2254,14 +2318,13 @@ EXT_TLS Ext_Context *ext_context = &(Ext_Context){
 };
 
 void ext_push_context(Ext_Context *ctx) {
-    ctx->prev = ext_context;
-    ext_context = ctx;
+    ext_slist_push_ext(ext_context, ctx, prev);
 }
 
 Ext_Context *ext_pop_context(void) {
     EXT_ASSERT(ext_context->prev, "Trying to pop default allocator");
     Ext_Context *old_ctx = ext_context;
-    ext_context = old_ctx->prev;
+    ext_slist_pop_ext(ext_context, prev);
     return old_ctx;
 }
 
@@ -2481,6 +2544,21 @@ static void ext_arena_reset_page(const Ext_Arena *arena, Ext_ArenaPage *page) {
     page->pos = EXT_ALIGN_PAD(page->data, arena->alignment);
 }
 
+static void ext_arena_assert_valid_page_allocator(Ext_Arena *arena) {
+    if(arena->page_allocator == &arena->base) {
+#ifndef EXTLIB_NO_STD
+        ext_log(EXT_ERROR,
+                "Error: arena cannot allocate pages from itself. Set `page_allocator` before using "
+                "the arena as a context allocator.");
+        abort();
+#elif defined(__GNUC__) || defined(__clang__)
+        __builtin_trap();
+#else
+        EXT_ASSERT(false, "arena cannot allocate pages from itself");
+#endif
+    }
+}
+
 static Ext_ArenaPage *ext_arena_new_page(Ext_Arena *arena, size_t requested_size) {
     size_t header_sz = sizeof(Ext_ArenaPage) + (arena->alignment - 1);
     size_t actual_size = requested_size + header_sz;
@@ -2503,21 +2581,22 @@ static Ext_ArenaPage *ext_arena_new_page(Ext_Arena *arena, size_t requested_size
         }
     }
 
+    ext_arena_assert_valid_page_allocator(arena);
     Ext_ArenaPage *page = ext_allocator_alloc(arena->page_allocator, page_size);
     EXT_ASSERT(page, "out of memory");
-    page->next = NULL;
-    ext_arena_reset_page(arena, page);
+    page->prev = NULL;
     page->size = page_size - sizeof(Ext_ArenaPage);
+    ext_arena_reset_page(arena, page);
     return page;
 }
 
 static Ext_ArenaPage *ext_arena_get_page(Ext_Arena *arena, size_t requested_size) {
-    for(Ext_ArenaPage **free = &arena->free_pages; *free; free = &(*free)->next) {
+    for(Ext_ArenaPage **free = &arena->free_pages; *free; free = &(*free)->prev) {
         Ext_ArenaPage *page = *free;
         ext_arena_reset_page(arena, page);
         if(page->size - page->pos < requested_size) continue;
-        *free = page->next;
-        page->next = NULL;
+        ext_slist_pop_ext(*free, prev);
+        page->prev = NULL;
         return page;
     }
     return ext_arena_new_page(arena, requested_size);
@@ -2539,11 +2618,10 @@ void *ext_arena_alloc(Ext_Arena *a, size_t size) {
     size = EXT_ALIGN_UP(size, a->alignment);
 
     if(!a->current_page) {
-        EXT_ASSERT(a->used_pages == NULL, "arena should have no active pages");
         EXT_ASSERT(((a->alignment) & (a->alignment - 1)) == 0, "alignment must be a power of 2");
         if(!a->page_allocator) a->page_allocator = ext_context->alloc;
+        ext_arena_assert_valid_page_allocator(a);
         Ext_ArenaPage *page = ext_arena_get_page(a, size);
-        a->used_pages = page;
         a->current_page = page;
     }
 
@@ -2551,8 +2629,8 @@ void *ext_arena_alloc(Ext_Arena *a, size_t size) {
     while(available < size) {
         if(a->flags & EXT_ARENA_NO_CHAIN) {
 #ifndef EXTLIB_NO_STD
-            ext_log(EXT_ERROR, "Not enough space in arena: available %zu, requested %zu",
-                    available, size);
+            ext_log(EXT_ERROR, "Not enough space in arena: available %zu, requested %zu", available,
+                    size);
             abort();
 #else
             EXT_ASSERT(false, "Not enough space in arena");
@@ -2562,8 +2640,7 @@ void *ext_arena_alloc(Ext_Arena *a, size_t size) {
 
         Ext_ArenaPage *page = ext_arena_get_page(a, size);
         page->base = a->current_page->base + a->current_page->pos;
-        a->current_page->next = page;
-        a->current_page = page;
+        ext_slist_push_ext(a->current_page, page, prev);
         available = a->current_page->size - a->current_page->pos;
         break;
     }
@@ -2623,7 +2700,6 @@ void ext_arena_free(Ext_Arena *a, void *ptr, size_t size) {
 
 Ext_ArenaCheckpoint ext_arena_checkpoint(const Ext_Arena *a) {
     if(!a->current_page) {
-        EXT_ASSERT(a->used_pages == NULL, "arena should have no active pages");
         return (Ext_ArenaCheckpoint){0};
     } else {
         return (Ext_ArenaCheckpoint){
@@ -2638,41 +2714,40 @@ void ext_arena_rewind(Ext_Arena *a, Ext_ArenaCheckpoint checkpoint) {
         ext_arena_reset(a);
         return;
     }
-    for(Ext_ArenaPage *page = checkpoint.page->next, *next; page; page = next) {
-        next = page->next;
-        page->next = a->free_pages;
+
+    while(a->current_page != checkpoint.page) {
+        EXT_ASSERT(a->current_page, "checkpoint page not found in arena");
+        Ext_ArenaPage *page = a->current_page;
+        ext_slist_pop_ext(a->current_page, prev);
         ext_arena_reset_page(a, page);
-        a->free_pages = page;
+        ext_slist_push_ext(a->free_pages, page, prev);
     }
-    checkpoint.page->next = NULL;
+
     a->current_page = checkpoint.page;
     a->current_page->pos = checkpoint.pos;
 }
 
 void ext_arena_reset(Ext_Arena *a) {
-    if(!a->used_pages) return;
-    for(Ext_ArenaPage *page = a->used_pages, *next; page; page = next) {
-        next = page->next;
-        page->next = a->free_pages;
+    if(!a->current_page) return;
+    while(a->current_page) {
+        Ext_ArenaPage *page = a->current_page;
+        ext_slist_pop_ext(a->current_page, prev);
         ext_arena_reset_page(a, page);
-        a->free_pages = page;
+        ext_slist_push_ext(a->free_pages, page, prev);
     }
-    a->used_pages = NULL;
-    a->current_page = NULL;
 }
 
 void ext_arena_destroy(Ext_Arena *a) {
-    for(Ext_ArenaPage *page = a->used_pages, *next; page; page = next) {
-        next = page->next;
+    while(a->current_page) {
+        Ext_ArenaPage *page = a->current_page;
+        ext_slist_pop_ext(a->current_page, prev);
         ext_allocator_free(a->page_allocator, page, page->size + sizeof(Ext_ArenaPage));
     }
-    for(Ext_ArenaPage *page = a->free_pages, *next; page; page = next) {
-        next = page->next;
+    while(a->free_pages) {
+        Ext_ArenaPage *page = a->free_pages;
+        ext_slist_pop_ext(a->free_pages, prev);
         ext_allocator_free(a->page_allocator, page, page->size + sizeof(Ext_ArenaPage));
     }
-    a->used_pages = NULL;
-    a->current_page = NULL;
-    a->free_pages = NULL;
 }
 
 size_t ext_arena_get_allocated(const Ext_Arena *a) {
@@ -3912,20 +3987,38 @@ static inline int ext_dbg_unknown(const char *name, const char *file, int line, 
 EXT__SUPPRESS_UNUSED_FUNC_END_
 
 #ifndef EXTLIB_NO_SHORTHANDS
-#define ASSERT        EXT_ASSERT
-#define UNREACHABLE   EXT_UNREACHABLE
-#define STATIC_ASSERT EXT_STATIC_ASSERT
-#define TODO          EXT_TODO
-#define DBG           EXT_DBG
-#define ALIGN_PAD     EXT_ALIGN_PAD
-#define ALIGN_UP      EXT_ALIGN_UP
-#define ARR_SIZE      EXT_ARR_SIZE
-#define KiB           EXT_KiB
-#define MiB           EXT_MiB
-#define GiB           EXT_GiB
-#define PRINTF_FORMAT EXT_PRINTF_FORMAT
-#define defer_loop    ext_defer_loop
-#define return_exit   ext_return_exit
+#define ASSERT                EXT_ASSERT
+#define UNREACHABLE           EXT_UNREACHABLE
+#define STATIC_ASSERT         EXT_STATIC_ASSERT
+#define TODO                  EXT_TODO
+#define DBG                   EXT_DBG
+#define ALIGN_PAD             EXT_ALIGN_PAD
+#define ALIGN_UP              EXT_ALIGN_UP
+#define ARR_SIZE              EXT_ARR_SIZE
+#define slist_push_ext        ext_slist_push_ext
+#define slist_pop_ext         ext_slist_pop_ext
+#define slist_push            ext_slist_push
+#define slist_pop             ext_slist_pop
+#define squeue_push_ext       ext_squeue_push_ext
+#define squeue_push_front_ext ext_squeue_push_front_ext
+#define squeue_pop_ext        ext_squeue_pop_ext
+#define squeue_push           ext_squeue_push
+#define squeue_push_front     ext_squeue_push_front
+#define squeue_pop            ext_squeue_pop
+#define dlist_insert_ext      ext_dlist_insert_ext
+#define dlist_push_back_ext   ext_dlist_push_back_ext
+#define dlist_push_front_ext  ext_dlist_push_front_ext
+#define dlist_remove_ext      ext_dlist_remove_ext
+#define dlist_insert          ext_dlist_insert
+#define dlist_push_back       ext_dlist_push_back
+#define dlist_push_front      ext_dlist_push_front
+#define dlist_remove          ext_dlist_remove
+#define KiB                   EXT_KiB
+#define MiB                   EXT_MiB
+#define GiB                   EXT_GiB
+#define PRINTF_FORMAT         EXT_PRINTF_FORMAT
+#define defer_loop            ext_defer_loop
+#define return_exit           ext_return_exit
 
 #define DEBUG      EXT_DEBUG
 #define INFO       EXT_INFO
