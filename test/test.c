@@ -1147,23 +1147,18 @@ CTEST(slice, ends_with) {
 CTEST(slice, strip_prefix) {
     StringSlice ss = ss_from_cstr("Hello, World!");
 
-    // Prefix present
     StringSlice stripped = ss_strip_prefix(ss, SS("Hello, "));
     ASSERT_TRUE(ss_eq(stripped, SS("World!")));
 
-    // Prefix absent — returns original
     stripped = ss_strip_prefix(ss, SS("Goodbye"));
     ASSERT_TRUE(ss_eq(stripped, ss));
 
-    // Empty prefix — returns original
     stripped = ss_strip_prefix(ss, SS(""));
     ASSERT_TRUE(ss_eq(stripped, ss));
 
-    // Prefix == entire string
     stripped = ss_strip_prefix(ss, ss);
     ASSERT_TRUE(stripped.size == 0);
 
-    // cstr variant
     stripped = ss_strip_prefix_cstr(ss, "Hello, ");
     ASSERT_TRUE(ss_eq(stripped, SS("World!")));
     stripped = ss_strip_prefix_cstr(ss, "Goodbye");
@@ -1173,23 +1168,18 @@ CTEST(slice, strip_prefix) {
 CTEST(slice, strip_suffix) {
     StringSlice ss = ss_from_cstr("Hello, World!");
 
-    // Suffix present
     StringSlice stripped = ss_strip_suffix(ss, SS(", World!"));
     ASSERT_TRUE(ss_eq(stripped, SS("Hello")));
 
-    // Suffix absent — returns original
     stripped = ss_strip_suffix(ss, SS("Goodbye"));
     ASSERT_TRUE(ss_eq(stripped, ss));
 
-    // Empty suffix — returns original
     stripped = ss_strip_suffix(ss, SS(""));
     ASSERT_TRUE(ss_eq(stripped, ss));
 
-    // Suffix == entire string
     stripped = ss_strip_suffix(ss, ss);
     ASSERT_TRUE(stripped.size == 0);
 
-    // cstr variant
     stripped = ss_strip_suffix_cstr(ss, ", World!");
     ASSERT_TRUE(ss_eq(stripped, SS("Hello")));
     stripped = ss_strip_suffix_cstr(ss, "Goodbye");
@@ -1208,8 +1198,6 @@ CTEST(slice, eq_ignore_case) {
     ASSERT_TRUE(ss_eq_ignore_case(SS(""), SS("")));
     ASSERT_TRUE(!ss_eq_ignore_case(SS("Hello"), SS("World")));
     ASSERT_TRUE(!ss_eq_ignore_case(SS("Hello"), SS("Hell")));
-
-    // Digits/punctuation unchanged
     ASSERT_TRUE(ss_eq_ignore_case(SS("test-123"), SS("TEST-123")));
 }
 
@@ -1304,6 +1292,7 @@ CTEST(slice, foreach_split_cstr) {
         "o Diva",
         "del Pelide Achille",
     };
+
     size_t i = 0;
     ss_foreach_split_cstr(SS("Cantami, o Diva, del Pelide Achille"), ", ", word) {
         ASSERT_TRUE(i < EXT_ARR_SIZE(expected));
@@ -1312,7 +1301,6 @@ CTEST(slice, foreach_split_cstr) {
     }
     ASSERT_TRUE(i == EXT_ARR_SIZE(expected));
 
-    // Delimiter not found — yields entire string
     i = 0;
     ss_foreach_split_cstr(SS("hello"), ", ", word) {
         ASSERT_TRUE(ss_eq(word, SS("hello")));
@@ -1327,6 +1315,7 @@ CTEST(slice, foreach_rsplit_cstr) {
         "o Diva",
         "Cantami",
     };
+
     size_t i = 0;
     ss_foreach_rsplit_cstr(SS("Cantami, o Diva, del Pelide Achille"), ", ", word) {
         ASSERT_TRUE(i < EXT_ARR_SIZE(expected));
@@ -1335,7 +1324,6 @@ CTEST(slice, foreach_rsplit_cstr) {
     }
     ASSERT_TRUE(i == EXT_ARR_SIZE(expected));
 
-    // Delimiter not found — yields entire string
     i = 0;
     ss_foreach_rsplit_cstr(SS("hello"), ", ", word) {
         ASSERT_TRUE(ss_eq(word, SS("hello")));
@@ -1346,25 +1334,19 @@ CTEST(slice, foreach_rsplit_cstr) {
 
 CTEST(slice, find_char) {
     StringSlice ss = ss_from_cstr("hello world");
-
     ASSERT_TRUE(ss_find_char(ss, 'h', 0) == 0);
     ASSERT_TRUE(ss_find_char(ss, 'o', 0) == 4);
     ASSERT_TRUE(ss_find_char(ss, 'o', 5) == 7);
     ASSERT_TRUE(ss_find_char(ss, 'z', 0) == -1);
-
-    // Offset past end
     ASSERT_TRUE(ss_find_char(ss, 'h', ss.size) == -1);
 }
 
 CTEST(slice, rfind_char) {
     StringSlice ss = ss_from_cstr("hello world");
-
     ASSERT_TRUE(ss_rfind_char(ss, 'd', ss.size) == 10);
     ASSERT_TRUE(ss_rfind_char(ss, 'o', ss.size) == 7);
     ASSERT_TRUE(ss_rfind_char(ss, 'o', 5) == 4);
     ASSERT_TRUE(ss_rfind_char(ss, 'z', ss.size) == -1);
-
-    // Offset at 0 — nothing to search
     ASSERT_TRUE(ss_rfind_char(ss, 'h', 0) == -1);
 }
 
@@ -1433,47 +1415,31 @@ CTEST(slice, rfind_cstr) {
 }
 
 CTEST(slice, basename) {
-    // Simple absolute path
     ASSERT_TRUE(ss_eq(ss_basename(SS("/usr/local/bin/test")), SS("test")));
-    // Relative path
     ASSERT_TRUE(ss_eq(ss_basename(SS("src/main.c")), SS("main.c")));
-    // Trailing slash
     ASSERT_TRUE(ss_eq(ss_basename(SS("/usr/local/")), SS("local")));
-    // No separator — returns whole string
     ASSERT_TRUE(ss_eq(ss_basename(SS("hello.txt")), SS("hello.txt")));
-    // Root
     ASSERT_TRUE(ss_basename(SS("/")).size == 0);
-    // Multiple trailing slashes
     ASSERT_TRUE(ss_eq(ss_basename(SS("/usr/local///")), SS("local")));
 
 #ifdef EXT_WINDOWS
-    // Windows-style backslash separators
     ASSERT_TRUE(ss_eq(ss_basename(SS("C:\\Users\\test\\file.txt")), SS("file.txt")));
     ASSERT_TRUE(ss_eq(ss_basename(SS("C:\\Users\\test\\")), SS("test")));
-    // Mixed separators
     ASSERT_TRUE(ss_eq(ss_basename(SS("C:\\Users/test/file.txt")), SS("file.txt")));
 #endif
 }
 
 CTEST(slice, dirname) {
-    // Simple absolute path
     ASSERT_TRUE(ss_eq(ss_dirname(SS("/usr/local/bin/test")), SS("/usr/local/bin")));
-    // Single level
     ASSERT_TRUE(ss_eq(ss_dirname(SS("/test")), SS("/")));
-    // Trailing slash
     ASSERT_TRUE(ss_eq(ss_dirname(SS("/usr/local/")), SS("/usr")));
-    // No separator — returns empty
     ASSERT_TRUE(ss_dirname(SS("hello.txt")).size == 0);
-    // Root
     ASSERT_TRUE(ss_eq(ss_dirname(SS("/")), SS("/")));
-    // Relative path
     ASSERT_TRUE(ss_eq(ss_dirname(SS("src/main.c")), SS("src")));
 
 #ifdef EXT_WINDOWS
-    // Windows-style backslash separators
     ASSERT_TRUE(ss_eq(ss_dirname(SS("C:\\Users\\test\\file.txt")), SS("C:\\Users\\test")));
     ASSERT_TRUE(ss_eq(ss_dirname(SS("C:\\file.txt")), SS("C:")));
-    // Mixed separators
     ASSERT_TRUE(ss_eq(ss_dirname(SS("C:\\Users/test/file.txt")), SS("C:\\Users/test")));
 #endif
 }
@@ -1907,30 +1873,23 @@ CTEST(hmap, delete_ss) {
 
 CTEST(hmap, get_bytes) {
     HashMap(int, int) map = {0};
-
-    // Empty map must return NULL without touching a NULL entries pointer.
     ASSERT_TRUE(hmap_get(&map, 1) == NULL);
 
     for(int i = 1; i <= 22; i++) {
         hmap_put(&map, i, i * 10);
     }
 
-    // Hit: correct key and value, inline mutation visible on next lookup.
     ASSERT_TRUE(hmap_get(&map, 5) != NULL);
     ASSERT_TRUE(hmap_get(&map, 5)->key == 5);
     ASSERT_TRUE(hmap_get(&map, 5)->value == 50);
     hmap_get(&map, 5)->value = 99;
     ASSERT_TRUE(hmap_get(&map, 5)->value == 99);
 
-    // Same key returns the same pointer (stable storage, no realloc triggered here).
-    // Note: two get calls must not share an expression — both write to the tmp slot.
     void *p3a = hmap_get(&map, 3);
     void *p3b = hmap_get(&map, 3);
     ASSERT_TRUE(p3a == p3b);
 
-    // Miss on absent key.
     ASSERT_TRUE(hmap_get(&map, 100) == NULL);
-
     hmap_free(&map);
 }
 
@@ -2078,7 +2037,6 @@ CTEST(hmap, get_ss) {
 CTEST(hmap, get_default_ss) {
     HashMap(StringSlice, int) map = {0};
 
-    // Word-count pattern — primary use case for get_default.
     const char *words[] = {"foo", "bar", "foo", "baz", "foo", "bar"};
     for(size_t i = 0; i < 6; i++) {
         hmap_get_default_ss(&map, ss_from_cstr(words[i]), 0)->value++;

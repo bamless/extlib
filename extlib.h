@@ -1656,8 +1656,8 @@ EXT_API int ext_cmd_write(const char *cmd, const void *data, size_t size);
 // Puts an entry into the hashmap with custom hash and compare functions.
 //
 // `hash_fn` and `cmp_fn` are functions:
-//   size_t hash_fn(KeyType *key, size_t key_size)                   — returns hash of the key
-//   int    cmp_fn (KeyType *key_a, KeyType *key_b, size_t key_size) — returns 0 if equal
+//   size_t hash_fn(KeyType *key, size_t key_size)                   - returns hash of the key
+//   int    cmp_fn (KeyType *key_a, KeyType *key_b, size_t key_size) - returns 0 if equal
 // Both receive a pointer to the key field (first field of the entry) along with its size
 // (sizeof(KeyType)).
 //
@@ -1857,12 +1857,13 @@ EXT_STATIC_ASSERT(((EXT_HMAP_INIT_CAPACITY) & (EXT_HMAP_INIT_CAPACITY - 1)) == 0
 // Hidden slots stored before the entries/hashes pointers ("before-pointer" layout).
 // The allocations for entries and hashes each carry EXT__HMAP_HIDDEN_SLOTS slots before
 // the pointer. Raw slot indices (relative to the pointer):
-//   entries[EXT__HMAP_TMP_ENTRY_SLOT] (-1): tmp entry — key/value staging area during probe
+//   entries[EXT__HMAP_TMP_ENTRY_SLOT] (-1): tmp entry - key/value staging area during probe
 //   entries[-2]: spare entry slot (reserved for future use)
-//   hashes[EXT__HMAP_TOMB_SLOT] (-2): tombstone count — incremented on delete, reset on clear/grow
-//   hashes[EXT__HMAP_TMP_IDX_SLOT] (-1): tmp index — probe side-channel: ext__hmap_find_ writes
-//                                        the resolved slot index here so callers can read it
-//                                         without a return value
+//
+//   hashes[EXT__HMAP_TOMB_SLOT] (-2): tombstone count - incremented on delete, reset on clear/grow
+//   hashes[EXT__HMAP_TMP_IDX_SLOT] (-1): tmp index    - probe side-channel: ext__hmap_find_ writes
+//                                                       the resolved slot index here so callers
+//                                                       can read it without a return value
 #define EXT__HMAP_HIDDEN_SLOTS   (2)
 #define EXT__HMAP_TMP_ENTRY_SLOT (-1)
 #define EXT__HMAP_TMP_IDX_SLOT   (-1)
@@ -2057,9 +2058,9 @@ static inline size_t ext__hash_cstr_(const char *str) {
 // Concrete hash / compare functions for the built-in key types.
 //
 // Both functions follow the same convention used by the _ex macros:
-//   hash_fn(entry, key_sz) — entry points to the full entry; key_sz carries
-//     sizeof(key) for the bytes variant and is ignored by cstr/ss.
-//   cmp_fn(entry_a, entry_b, key_sz) — returns 0 on a key match.
+//   hash_fn(entry, key_sz)           - entry points to the full entry; key_sz carries
+//                                      sizeof(key) for the bytes variant and is ignored by cstr/ss.
+//   cmp_fn(entry_a, entry_b, key_sz) - returns 0 on a key match.
 
 static inline size_t ext__hmap_hash_bytes_(const void *entry, size_t key_sz) {
     return ext__hash_bytes_(entry, key_sz);
@@ -3329,7 +3330,7 @@ Ext_StringSlice ext_ss_extension(Ext_StringSlice path) {
     Ext_StringSlice base = ext_ss_basename(path);
     for(size_t i = base.size; i > 0; i--) {
         if(base.data[i - 1] == '.') {
-            // Dotfile (e.g. ".gitignore") with no other dot — no extension
+            // Dotfile (e.g. ".gitignore") with no other dot; no extension
             if(i - 1 == 0) return (Ext_StringSlice){0, base.data + base.size};
             return ext_ss_cut(base, i - 1);
         }
