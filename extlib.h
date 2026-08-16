@@ -1,5 +1,5 @@
 /**
- * extlib v2.2.0 - c extended library
+ * extlib v2.2.1 - c extended library
  *
  * Single-header-file library that provides functionality that extends the standard c library.
  * Features:
@@ -50,6 +50,9 @@
  *      SECTION: IO
  *
  *  Changelog:
+ *
+ *  v2.2.1:
+ *      - Move some `#define`s in header portion of library (before `EXTLIB_IMPL` block).
  *
  *  v2.2.0:
  *      - Tweaked arena to use an explicit free list for page reuse.
@@ -886,7 +889,16 @@ EXT_API char *ext_temp_vsprintf(const char *fmt, va_list ap);
 // SECTION: Arena allocator
 //
 
-// An allocated chunk in the arena
+#ifndef EXT_ARENA_PAGE_SZ
+#define EXT_ARENA_PAGE_SZ EXT_KiB(8)
+#endif  // EXT_ARENA_PAGE_SZ
+
+#ifndef EXT_DEFAULT_ALIGNMENT
+#define EXT_DEFAULT_ALIGNMENT 16
+#endif  // EXT_DEFAULT_ALIGNMENT
+EXT_STATIC_ASSERT(((EXT_DEFAULT_ALIGNMENT) & ((EXT_DEFAULT_ALIGNMENT)-1)) == 0,
+                  "default alignment must be a power of 2");
+
 typedef struct Ext_ArenaPage {
     struct Ext_ArenaPage *prev;
     size_t size;
@@ -1026,7 +1038,7 @@ EXT_API char *ext_arena_vsprintf(Ext_Arena *a, const char *fmt, va_list ap);
 
 // -----------------------------------------------------------------------------
 // SECTION: Dynamic array
-//
+
 // A growable, type-safe, dynamic array implemented as macros.
 // The dynamic array integrates with the `Allocator` interface and the context to support custom
 // allocators for its backing array.
@@ -1556,7 +1568,7 @@ EXT_API int ext_cmd_write(const char *cmd, const void *data, size_t size);
 
 // -----------------------------------------------------------------------------
 // SECTION: Hashmap
-//
+
 // Generic typesafe hashmap.
 // The hashmap is implemented using open-addressing and linear probing. Keys are stored at
 // indices 0 through capacity (inclusive); each slot may be empty, a tombstone, or a live entry.
@@ -2307,6 +2319,7 @@ static void ext_default_log(Ext_LogLevel lvl, void *data, const char *fmt, va_li
 // -----------------------------------------------------------------------------
 // SECTION: Context
 //
+
 EXT_TLS Ext_Context *ext_context = &(Ext_Context){
     .alloc = &ext_default_allocator.base,
     .log_level = EXT_INFO,
@@ -2337,12 +2350,6 @@ Ext_Context *ext_pop_context(void) {
 extern char __heap_base[];
 static void *ext_heap_start = (void *)__heap_base;
 #endif  // EXTLIB_WASM
-
-#ifndef EXT_DEFAULT_ALIGNMENT
-#define EXT_DEFAULT_ALIGNMENT 16
-#endif  // EXT_DEFAULT_ALIGNMENT
-EXT_STATIC_ASSERT(((EXT_DEFAULT_ALIGNMENT) & ((EXT_DEFAULT_ALIGNMENT)-1)) == 0,
-                  "default alignment must be a power of 2");
 
 #ifndef EXT_DEFAULT_TEMP_SIZE
 #define EXT_DEFAULT_TEMP_SIZE EXT_MiB(256)
@@ -2409,6 +2416,7 @@ Ext_DefaultAllocator ext_default_allocator = {
 // -----------------------------------------------------------------------------
 // SECTION: Temporary allocator
 //
+
 static void *ext_temp_alloc_wrap(Ext_Allocator *a, size_t size);
 static void *ext_temp_realloc_wrap(Ext_Allocator *a, void *ptr, size_t old_size, size_t new_size);
 static void ext_temp_free_wrap(Ext_Allocator *a, void *ptr, size_t size);
@@ -2534,9 +2542,6 @@ char *ext_temp_vsprintf(const char *fmt, va_list ap) {
 // -----------------------------------------------------------------------------
 // SECTION: Arena allocator
 //
-#ifndef EXT_ARENA_PAGE_SZ
-#define EXT_ARENA_PAGE_SZ EXT_KiB(8)
-#endif  // EXT_ARENA_PAGE_SZ
 
 static void ext_arena_reset_page(const Ext_Arena *arena, Ext_ArenaPage *page) {
     page->base = 0;
@@ -2793,6 +2798,7 @@ char *ext_arena_vsprintf(Ext_Arena *a, const char *fmt, va_list ap) {
 // -----------------------------------------------------------------------------
 // SECTION: String buffer
 //
+
 #ifndef EXTLIB_NO_STD
 #include <ctype.h>
 #else
@@ -2877,6 +2883,7 @@ int ext_sb_appendvf(Ext_StringBuffer *sb, const char *fmt, va_list ap) {
 // -----------------------------------------------------------------------------
 // SECTION: String slice
 //
+
 Ext_StringSlice ext_ss_from(const void *mem, size_t size) {
     return (Ext_StringSlice){size, mem};
 }
@@ -3364,6 +3371,7 @@ void ext_sb_append_path_cstr(Ext_StringBuffer *sb, const char *component) {
 // -----------------------------------------------------------------------------
 // SECTION: IO
 //
+
 #ifndef EXTLIB_NO_STD
 
 #if defined(EXT_POSIX) && !(defined(_POSIX_C_SOURCE) && defined(__USE_POSIX2))
