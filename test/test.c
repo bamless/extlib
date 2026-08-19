@@ -2171,7 +2171,32 @@ CTEST(io, read_write_file) {
     ASSERT_TRUE(sb.size == sizeof(content) - 1);
     ASSERT_TRUE(memcmp(content, sb.items, sizeof(content) - 1) == 0);
 
+    // Reading into a non-empty buffer appends, leaving what was already there untouched
+    res = read_file("./test/out.txt", &sb);
+    ASSERT_TRUE(res);
+    ASSERT_TRUE(sb.size == (sizeof(content) - 1) * 2);
+    ASSERT_TRUE(memcmp(content, sb.items, sizeof(content) - 1) == 0);
+    ASSERT_TRUE(memcmp(content, sb.items + sizeof(content) - 1, sizeof(content) - 1) == 0);
+
     sb_free(&sb);
+}
+
+CTEST(io, get_file_size) {
+    const char content[] = "Cantami, o Diva,\nDel Pelide Achille\n";
+    ASSERT_TRUE(write_file("./test/out.txt", content, sizeof(content) - 1));
+
+    ASSERT_TRUE(get_file_size("./test/out.txt") == (int64_t)(sizeof(content) - 1));
+
+    FILE *f = fopen("./test/out.txt", "rb");
+    ASSERT_TRUE(f != NULL);
+    ASSERT_TRUE(get_file_size_fp(f) == (int64_t)(sizeof(content) - 1));
+    fclose(f);
+
+    LOGGING_LEVEL(NO_LOGGING) {
+        ASSERT_TRUE(get_file_size("doesnotexist") == -1);
+        // Directories have no meaningful size, so asking for one is an error
+        ASSERT_TRUE(get_file_size("./test") == -1);
+    }
 }
 
 CTEST(io, read_line) {
@@ -2193,6 +2218,64 @@ CTEST(io, read_line) {
     }
     ASSERT_FALSE(res < 0 && ferror(f) != 0);
     ASSERT_TRUE(res == 0);
+    fclose(f);
+    sb_free(&sb);
+}
+
+CTEST(io, read_line_append) {
+    StringBuffer expected = {0};
+    for(int i = 0; i < 100; i++) {
+        sb_appendf(&expected, "%d: Cantami, o Diva, del Pelide Achille\n", i);
+    }
+    // A line longer than any sensible starting capacity, to exercise growing mid-line
+    for(int i = 0; i < 500; i++) sb_appendf(&expected, "%d ", i);
+    sb_append_cstr(&expected, "\n");
+    // A last line without a terminator
+    sb_append_cstr(&expected, "Del Pelide Achille");
+
+    LOGGING_LEVEL(NO_LOGGING) {
+        ASSERT_TRUE(write_file("./test/lines.txt", expected.items, expected.size));
+    }
+
+    FILE *f = fopen("./test/lines.txt", "rb");
+    ASSERT_TRUE(f != NULL);
+
+    StringBuffer sb = {0};
+    int lines = 0, res;
+    while((res = read_line(f, &sb)) > 0) lines++;
+    ASSERT_TRUE(res == 0);
+    fclose(f);
+
+    ASSERT_TRUE(lines == 101);
+    ASSERT_TRUE(sb.size == expected.size);
+    ASSERT_TRUE(memcmp(sb.items, expected.items, expected.size) == 0);
+
+    LOGGING_LEVEL(NO_LOGGING) ASSERT_TRUE(delete_file("./test/lines.txt"));
+    sb_free(&sb);
+    sb_free(&expected);
+}
+
+CTEST(io, read_line_full_buffer) {
+    const char content[] = "Cantami, o Diva,\nDel Pelide Achille\n";
+    LOGGING_LEVEL(NO_LOGGING) {
+        ASSERT_TRUE(write_file("./test/out.txt", content, sizeof(content) - 1));
+    }
+
+    // Reading into a buffer with a single byte of room left must still make progress
+    StringBuffer sb = {0};
+    sb_reserve_exact(&sb, 4096);
+    while(sb.size < sb.capacity - 2) sb_append_char(&sb, 'x');
+    sb_append_char(&sb, '\n');
+    ASSERT_TRUE(sb.capacity - sb.size == 1);
+
+    FILE *f = fopen("./test/out.txt", "rb");
+    ASSERT_TRUE(f != NULL);
+
+    size_t before = sb.size;
+    ASSERT_TRUE(read_line(f, &sb) > 0);
+    ASSERT_TRUE(sb.size - before == strlen("Cantami, o Diva,\n"));
+    ASSERT_TRUE(memcmp(sb.items + before, "Cantami, o Diva,\n", sb.size - before) == 0);
+
     fclose(f);
     sb_free(&sb);
 }
