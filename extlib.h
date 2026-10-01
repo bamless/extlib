@@ -1,5 +1,5 @@
 /**
- * extlib v2.3.0 - c extended library
+ * extlib v2.3.1 - c extended library
  *
  * Single-header-file library that provides functionality that extends the standard c library.
  * Features:
